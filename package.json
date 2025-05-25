@@ -9,7 +9,10 @@
     "build": "tsc",
     "test": "jest",
     "up": "docker-compose up --build",
-    "docker-build": "tsc && docker build -t backend ."
+    "up-cloud": "docker-compose -f docker-compose.cloud.yml up --build",
+    "docker-build": "tsc && docker build -t backend .",
+    "clean": "docker-compose down",
+    "clean-cloud": "docker-compose -f docker-compose.cloud.yml down"
   },
   "dependencies": {
     "fastify": "^4.24.3",

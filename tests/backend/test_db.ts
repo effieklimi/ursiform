@@ -3,11 +3,12 @@ import { createCollection } from "../../src/qdrant/db";
 // Mock the QdrantClient
 jest.mock("@qdrant/js-client-rest", () => {
   return {
-    QdrantClient: jest.fn().mockImplementation(() => ({
+    QdrantClient: jest.fn().mockImplementation((config) => ({
       getCollection: jest
         .fn()
         .mockRejectedValue(new Error("Collection not found")),
       createCollection: jest.fn().mockResolvedValue({}),
+      config,
     })),
   };
 });
@@ -15,6 +16,39 @@ jest.mock("@qdrant/js-client-rest", () => {
 describe("Database Tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear environment variables
+    delete process.env.QDRANT_API_KEY;
+    delete process.env.QDRANT_URL;
+  });
+
+  describe("QdrantClient Configuration", () => {
+    it("should initialize client without API key for local instance", () => {
+      const { QdrantClient } = require("@qdrant/js-client-rest");
+
+      // Re-require the module to trigger initialization
+      jest.resetModules();
+      require("../../src/qdrant/db");
+
+      expect(QdrantClient).toHaveBeenCalledWith({
+        url: "http://localhost:6333",
+      });
+    });
+
+    it("should initialize client with API key for cloud instance", () => {
+      process.env.QDRANT_API_KEY = "test-api-key";
+      process.env.QDRANT_URL = "https://test-cluster.cloud.qdrant.io:6333";
+
+      const { QdrantClient } = require("@qdrant/js-client-rest");
+
+      // Re-require the module to trigger initialization
+      jest.resetModules();
+      require("../../src/qdrant/db");
+
+      expect(QdrantClient).toHaveBeenCalledWith({
+        url: "https://test-cluster.cloud.qdrant.io:6333",
+        apiKey: "test-api-key",
+      });
+    });
   });
 
   describe("createCollection", () => {

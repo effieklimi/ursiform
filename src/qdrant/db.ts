@@ -1,8 +1,16 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
 
-const client = new QdrantClient({
+// Initialize client with support for both local and cloud instances
+const clientConfig: any = {
   url: process.env.QDRANT_URL || "http://localhost:6333",
-});
+};
+
+// Add API key if provided (for cloud instances)
+if (process.env.QDRANT_API_KEY) {
+  clientConfig.apiKey = process.env.QDRANT_API_KEY;
+}
+
+const client = new QdrantClient(clientConfig);
 
 export { client };
 

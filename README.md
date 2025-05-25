@@ -23,7 +23,8 @@ yearn/
 │   ├── test_embedder.ts        # Embedder tests
 │   ├── test_translator.ts      # Translation logic tests
 │   └── test_routes.ts          # API endpoint tests
-├── docker-compose.yml          # Docker services configuration
+├── docker-compose.yml          # Docker services configuration (local Qdrant)
+├── docker-compose.cloud.yml    # Docker configuration for cloud Qdrant
 ├── Dockerfile                  # Backend container configuration
 ├── package.json                # Dependencies and scripts
 ├── tsconfig.json              # TypeScript configuration
@@ -35,21 +36,23 @@ yearn/
 ## Features
 
 - **Fastify + TypeScript**: High-performance web framework with type safety
-- **Qdrant Integration**: Vector database for similarity search
+- **Qdrant Integration**: Vector database for similarity search (local or cloud)
 - **OpenAI Embeddings**: Text-to-vector transformation using `text-embedding-ada-002`
 - **RESTful API**: Clean endpoints for collection and vector management
 - **Semantic Search**: Translate natural language queries to vector searches
 - **Docker Support**: Containerized deployment with docker-compose
 - **Comprehensive Testing**: Unit tests with Jest and mocking
 - **Input Validation**: Zod schemas for request/response validation
+- **Cloud Ready**: Supports both local and cloud-hosted Qdrant instances
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 18+
-- Docker and Docker Compose
+- Docker and Docker Compose (for local setup)
 - OpenAI API key
+- Qdrant instance (local or cloud)
 
 ### Installation
 
@@ -65,25 +68,59 @@ yarn install
 cp env.example .env
 ```
 
-Edit `.env` file and add your API keys:
+#### For Local Qdrant (Docker)
+
+Edit `.env` file:
 
 ```bash
 QDRANT_URL=http://qdrant:6333
-GEMINI_API_KEY=<your-google-gemini-key>
+# QDRANT_API_KEY not needed for local
 OPENAI_API_KEY=<your-openai-key>
+GEMINI_API_KEY=<your-google-gemini-key>
+```
+
+#### For Cloud Qdrant (Qdrant Cloud, AWS, etc.)
+
+Edit `.env` file:
+
+```bash
+QDRANT_URL=https://your-cluster-url.aws.cloud.qdrant.io:6333
+QDRANT_API_KEY=<your-qdrant-api-key>
+OPENAI_API_KEY=<your-openai-key>
+GEMINI_API_KEY=<your-google-gemini-key>
 ```
 
 ## Commands
 
-### Development
+### Local Development (with Docker Qdrant)
 
 ```bash
 # Install dependencies
 make install
 
-# Start services with Docker Compose
+# Start services with local Qdrant
 make up
 
+# Clean up local services
+make clean
+```
+
+### Cloud Development (with Cloud Qdrant)
+
+```bash
+# Install dependencies
+make install
+
+# Start backend only (connects to cloud Qdrant)
+make up-cloud
+
+# Clean up cloud setup
+make clean-cloud
+```
+
+### Common Commands
+
+```bash
 # Run in development mode
 make dev
 
@@ -92,9 +129,6 @@ make build
 
 # Run tests
 make test
-
-# Clean up Docker resources
-make clean
 ```
 
 ### NPM Scripts
@@ -112,14 +146,19 @@ yarn start
 # Run tests
 yarn test
 
-# Docker compose up
+# Docker compose up (local)
 yarn up
+
+# Docker compose up (cloud)
+yarn up-cloud
 
 # Docker build
 yarn docker-build
 ```
 
 ## API Endpoints
+
+All endpoints remain the same regardless of whether you use local or cloud Qdrant:
 
 ### Health Check
 
@@ -202,13 +241,30 @@ Response:
 
 ## Environment Variables
 
-| Variable         | Description                   | Default              |
-| ---------------- | ----------------------------- | -------------------- |
-| `QDRANT_URL`     | Qdrant database URL           | `http://qdrant:6333` |
-| `OPENAI_API_KEY` | OpenAI API key for embeddings | Required             |
-| `GEMINI_API_KEY` | Google Gemini API key         | Optional             |
-| `PORT`           | Server port                   | `8000`               |
-| `HOST`           | Server host                   | `0.0.0.0`            |
+| Variable         | Description                   | Default                 | Required |
+| ---------------- | ----------------------------- | ----------------------- | -------- |
+| `QDRANT_URL`     | Qdrant database URL           | `http://localhost:6333` | Yes      |
+| `QDRANT_API_KEY` | Qdrant API key (cloud only)   | None                    | Cloud    |
+| `OPENAI_API_KEY` | OpenAI API key for embeddings | None                    | Yes      |
+| `GEMINI_API_KEY` | Google Gemini API key         | None                    | Optional |
+| `PORT`           | Server port                   | `8000`                  | No       |
+| `HOST`           | Server host                   | `0.0.0.0`               | No       |
+
+### Qdrant Setup Options
+
+#### Option 1: Local Qdrant (Development)
+
+- Use `docker-compose.yml`
+- Set `QDRANT_URL=http://qdrant:6333`
+- No API key needed
+- Run with `make up`
+
+#### Option 2: Cloud Qdrant (Production)
+
+- Use `docker-compose.cloud.yml`
+- Set `QDRANT_URL` to your cloud cluster URL
+- Set `QDRANT_API_KEY` to your API key
+- Run with `make up-cloud`
 
 ## Testing
 
@@ -235,7 +291,7 @@ yarn test --coverage
 
 ### Key Components
 
-- **Database Layer** (`qdrant/db.ts`): Manages Qdrant client and collections
+- **Database Layer** (`qdrant/db.ts`): Manages Qdrant client and collections (supports both local and cloud)
 - **Embedder** (`qdrant/embedder.ts`): Converts text to vectors using OpenAI
 - **Translator** (`qdrant/translator.ts`): Orchestrates embedding + search
 - **Routes**: RESTful API endpoints with validation
@@ -243,19 +299,21 @@ yarn test --coverage
 
 ## Production Deployment
 
-1. **Build the application:**
+### Local Qdrant
 
 ```bash
 make build
-```
-
-2. **Deploy with Docker Compose:**
-
-```bash
 docker-compose up -d
 ```
 
-3. **Scale services:**
+### Cloud Qdrant
+
+```bash
+make build
+docker-compose -f docker-compose.cloud.yml up -d
+```
+
+### Scale Services
 
 ```bash
 docker-compose up -d --scale backend=3
