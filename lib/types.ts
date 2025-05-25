@@ -1,5 +1,5 @@
 export interface NaturalQueryRequest {
-  collection: string;
+  collection?: string;
   question: string;
   provider?: "openai" | "gemini";
 }

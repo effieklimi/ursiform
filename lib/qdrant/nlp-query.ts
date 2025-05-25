@@ -10,14 +10,23 @@ const openai = new OpenAI({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 interface QueryIntent {
-  type: "count" | "search" | "list" | "filter" | "describe";
+  type:
+    | "count"
+    | "search"
+    | "list"
+    | "filter"
+    | "describe"
+    | "collections"
+    | "database";
   target: string; // what to count/search/list
   filter?: any; // any filters to apply
   limit?: number;
+  scope: "collection" | "database"; // new: scope of the query
+  extractedCollection?: string; // new: collection name extracted from query text
 }
 
 export async function processNaturalQuery(
-  collection: string,
+  collection: string | null, // Make collection optional
   question: string,
   provider: EmbeddingProvider = "openai"
 ): Promise<{
@@ -32,10 +41,13 @@ export async function processNaturalQuery(
     // Step 1: Understand the intent using LLM
     const intent = await parseQueryIntent(question, provider);
 
-    // Step 2: Execute the appropriate Qdrant operation
-    const result = await executeQuery(collection, intent);
+    // Step 2: Use extracted collection name if available and no explicit collection provided
+    const finalCollection = collection || intent.extractedCollection || null;
 
-    // Step 3: Generate natural language response
+    // Step 3: Execute the appropriate operation (database or collection level)
+    const result = await executeQuery(finalCollection, intent);
+
+    // Step 4: Generate natural language response
     const answer = await generateResponse(question, intent, result, provider);
 
     const execution_time_ms = Date.now() - startTime;
@@ -78,9 +90,9 @@ async function parseQueryIntent(
     return fallbackIntent;
   }
 
-  const systemPrompt = `You are a query analyzer for a vector database. Parse the user's question and return a JSON object with the query intent.
+  const systemPrompt = `You are a query analyzer for a vector database system. Parse the user's question and return a JSON object with the query intent.
 
-The database contains image data with these fields:
+The system contains multiple collections, each with image data with these fields:
 - name (artist name)
 - file_name (image filename)
 - image_url (URL to image)
@@ -92,26 +104,38 @@ Available query types:
 - "list": list unique values (e.g., "list all artists")
 - "filter": filter by criteria (e.g., "images with .jpeg extension")
 - "describe": get general info (e.g., "describe this collection")
+- "collections": collection management (e.g., "what collections exist", "list collections")
+- "database": database-level queries (e.g., "describe the database", "how many collections")
+
+Available scopes:
+- "collection": query operates on a specific collection
+- "database": query operates on the entire database
 
 Return ONLY a JSON object in this format:
 {
-  "type": "count|search|list|filter|describe",
-  "target": "what to count/search/list (e.g., 'artists', 'images', 'total')",
+  "type": "count|search|list|filter|describe|collections|database",
+  "target": "what to count/search/list (e.g., 'artists', 'images', 'collections')",
   "filter": {"field": "value"} or null,
-  "limit": number or null
+  "limit": number or null,
+  "scope": "collection|database",
+  "extractedCollection": "collection_name_if_mentioned_in_query" or null
 }
 
 Examples:
-- "How many artists?" → {"type": "count", "target": "artists", "filter": null, "limit": null}
-- "Find Chris Dyer images" → {"type": "search", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10}
-- "List all artists" → {"type": "list", "target": "artists", "filter": null, "limit": null}`;
+- "How many artists?" → {"type": "count", "target": "artists", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "How many artists in midjourneysample?" → {"type": "count", "target": "artists", "filter": null, "limit": null, "scope": "collection", "extractedCollection": "midjourneysample"}
+- "What collections exist?" → {"type": "collections", "target": "list", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "How many collections are there?" → {"type": "count", "target": "collections", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "Describe the database" → {"type": "database", "target": "overview", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "Find Chris Dyer images across all collections" → {"type": "search", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "database", "extractedCollection": null}
+- "How many vectors in test_collection?" → {"type": "count", "target": "total", "filter": null, "limit": null, "scope": "collection", "extractedCollection": "test_collection"}`;
 
   try {
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // Use valid Gemini model
+        model: "gemini-2.0-flash", // Use stable Gemini 2.0 Flash model
       });
       const result = await model.generateContent([
         { text: systemPrompt },
@@ -146,12 +170,57 @@ Examples:
 function inferIntentFromQuestion(question: string): QueryIntent {
   const q = question.toLowerCase();
 
+  // Try to extract collection name from the question
+  const extractedCollection = extractCollectionFromQuestion(question);
+
+  // Database-level queries
+  if (q.includes("collections") || q.includes("database")) {
+    if (q.includes("how many") || q.includes("count")) {
+      return { type: "count", target: "collections", scope: "database" };
+    }
+    if (q.includes("list") || q.includes("what") || q.includes("show")) {
+      return { type: "collections", target: "list", scope: "database" };
+    }
+    if (q.includes("describe")) {
+      return { type: "database", target: "overview", scope: "database" };
+    }
+  }
+
+  // Collection-level queries (existing logic)
   if (q.includes("how many") || q.includes("count")) {
-    if (q.includes("artist")) return { type: "count", target: "artists" };
-    return { type: "count", target: "total" };
+    if (q.includes("artist")) {
+      return {
+        type: "count",
+        target: "artists",
+        scope: extractedCollection ? "collection" : "database",
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+    if (q.includes("vector") || q.includes("image") || q.includes("item")) {
+      return {
+        type: "count",
+        target: "total",
+        scope: extractedCollection ? "collection" : "database",
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+    return {
+      type: "count",
+      target: "total",
+      scope: extractedCollection ? "collection" : "database",
+      ...(extractedCollection && { extractedCollection }),
+    };
   }
 
   if (q.includes("find") || q.includes("search")) {
+    // Check if it's across all collections
+    const scope =
+      q.includes("all collections") || q.includes("across")
+        ? "database"
+        : extractedCollection
+        ? "collection"
+        : "database";
+
     // Try to extract artist name
     const artistMatch = question.match(
       /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/i
@@ -162,20 +231,170 @@ function inferIntentFromQuestion(question: string): QueryIntent {
         target: "images",
         filter: { name: artistMatch[1] },
         limit: 10,
+        scope,
+        ...(extractedCollection && { extractedCollection }),
       };
     }
-    return { type: "search", target: "images", limit: 10 };
+    return {
+      type: "search",
+      target: "images",
+      limit: 10,
+      scope,
+      ...(extractedCollection && { extractedCollection }),
+    };
   }
 
   if (q.includes("list") || q.includes("show")) {
-    if (q.includes("artist")) return { type: "list", target: "artists" };
-    return { type: "list", target: "images", limit: 20 };
+    if (q.includes("artist")) {
+      return {
+        type: "list",
+        target: "artists",
+        scope: extractedCollection ? "collection" : "database",
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+    return {
+      type: "list",
+      target: "images",
+      limit: 20,
+      scope: extractedCollection ? "collection" : "database",
+      ...(extractedCollection && { extractedCollection }),
+    };
   }
 
-  return { type: "describe", target: "collection" };
+  if (q.includes("describe")) {
+    return {
+      type: "describe",
+      target: extractedCollection ? "collection" : "database",
+      scope: extractedCollection ? "collection" : "database",
+      ...(extractedCollection && { extractedCollection }),
+    };
+  }
+
+  return {
+    type: "describe",
+    target: "collection",
+    scope: extractedCollection ? "collection" : "database",
+    ...(extractedCollection && { extractedCollection }),
+  };
+}
+
+// New function to extract collection names from natural language
+function extractCollectionFromQuestion(question: string): string | undefined {
+  const q = question.toLowerCase();
+
+  // Common patterns for mentioning collections
+  const patterns = [
+    // "in [collection]" or "from [collection]"
+    /(?:in|from)\s+([a-zA-Z][a-zA-Z0-9_-]*)/g,
+    // "[collection] collection"
+    /([a-zA-Z][a-zA-Z0-9_-]*)\s+collection/g,
+    // "collection [collection]"
+    /collection\s+([a-zA-Z][a-zA-Z0-9_-]*)/g,
+  ];
+
+  for (const pattern of patterns) {
+    const matches = [...q.matchAll(pattern)];
+    for (const match of matches) {
+      const candidate = match[1];
+      // Filter out common words that aren't collection names
+      if (
+        ![
+          "the",
+          "this",
+          "that",
+          "my",
+          "your",
+          "our",
+          "their",
+          "all",
+          "some",
+          "any",
+          "each",
+          "every",
+        ].includes(candidate)
+      ) {
+        return candidate;
+      }
+    }
+  }
+
+  // Look for specific common collection names that might appear without prepositions
+  const commonCollectionNames = [
+    "midjourneysample",
+    "test_collection",
+    "my_docs",
+    "test_small",
+    "new_test_yearn",
+    "docs_openai",
+    "docs_gemini",
+  ];
+  for (const name of commonCollectionNames) {
+    if (q.includes(name)) {
+      return name;
+    }
+  }
+
+  return undefined;
 }
 
 async function executeQuery(
+  collection: string | null,
+  intent: QueryIntent
+): Promise<any> {
+  if (intent.scope === "database") {
+    return await executeDatabaseQuery(intent);
+  } else {
+    // Collection-level query - require collection name
+    if (!collection) {
+      throw new Error(
+        "Collection name is required for collection-level queries"
+      );
+    }
+    return await executeCollectionQuery(collection, intent);
+  }
+}
+
+async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
+  switch (intent.type) {
+    case "count":
+      if (intent.target === "collections") {
+        return await countCollections();
+      }
+      if (intent.target === "artists") {
+        return await countArtistsAcrossDatabase();
+      }
+      if (intent.target === "total") {
+        return await countTotalVectorsAcrossDatabase();
+      }
+      break;
+
+    case "collections":
+      return await listCollections();
+
+    case "database":
+      return await describeDatabaseInfo();
+
+    case "search":
+      if (intent.filter) {
+        return await searchAcrossCollections(intent.filter, intent.limit || 10);
+      }
+      break;
+
+    case "list":
+      if (intent.target === "artists") {
+        return await listArtistsAcrossDatabase(intent.limit || 50);
+      }
+      break;
+
+    default:
+      throw new Error(
+        `Database-level query type '${intent.type}' not implemented yet`
+      );
+  }
+}
+
+async function executeCollectionQuery(
   collection: string,
   intent: QueryIntent
 ): Promise<any> {
@@ -204,10 +423,103 @@ async function executeQuery(
       return await describeCollection(collection);
 
     default:
-      throw new Error(`Unknown query type: ${intent.type}`);
+      throw new Error(`Unknown collection-level query type: ${intent.type}`);
   }
 }
 
+// New database-level functions
+async function countCollections(): Promise<{
+  count: number;
+  collections: string[];
+}> {
+  const collectionsInfo = await client.getCollections();
+  const collections = collectionsInfo.collections.map((c: any) => c.name);
+
+  return {
+    count: collections.length,
+    collections: collections,
+  };
+}
+
+async function listCollections(): Promise<{
+  collections: Array<{ name: string; vectors_count?: number }>;
+}> {
+  const collectionsInfo = await client.getCollections();
+  const collections = collectionsInfo.collections;
+
+  // Get detailed info for each collection using actual count
+  const detailedCollections = await Promise.all(
+    collections.map(async (collection: any) => {
+      try {
+        // Use the same count method that works for individual queries
+        const countResult = await client.count(collection.name, {});
+        return {
+          name: collection.name,
+          vectors_count: countResult.count || 0,
+        };
+      } catch (error) {
+        console.warn(
+          `Failed to count vectors in collection ${collection.name}:`,
+          error
+        );
+        return {
+          name: collection.name,
+          vectors_count: 0,
+        };
+      }
+    })
+  );
+
+  return { collections: detailedCollections };
+}
+
+async function describeDatabaseInfo(): Promise<any> {
+  const collectionsData = await listCollections();
+  const totalVectors = collectionsData.collections.reduce(
+    (sum, col) => sum + (col.vectors_count || 0),
+    0
+  );
+
+  return {
+    total_collections: collectionsData.collections.length,
+    total_vectors: totalVectors,
+    collections: collectionsData.collections,
+  };
+}
+
+async function searchAcrossCollections(
+  filter: any,
+  limit: number
+): Promise<any> {
+  const collectionsData = await listCollections();
+  const allResults: any[] = [];
+
+  // Search each collection
+  for (const collection of collectionsData.collections) {
+    try {
+      const results = await searchImages(collection.name, filter, limit);
+      if (results.images && results.images.length > 0) {
+        allResults.push({
+          collection: collection.name,
+          count: results.count,
+          images: results.images,
+        });
+      }
+    } catch (error) {
+      console.warn(`Failed to search collection ${collection.name}:`, error);
+    }
+  }
+
+  const totalCount = allResults.reduce((sum, result) => sum + result.count, 0);
+
+  return {
+    total_count: totalCount,
+    collections_searched: collectionsData.collections.length,
+    results_by_collection: allResults,
+  };
+}
+
+// Existing collection-level functions remain the same
 async function countTotal(collection: string): Promise<{ count: number }> {
   const response = await client.count(collection, {});
   return { count: response.count };
@@ -216,9 +528,8 @@ async function countTotal(collection: string): Promise<{ count: number }> {
 async function countUniqueArtists(
   collection: string
 ): Promise<{ count: number; artists: string[] }> {
-  // Get sample of images to count unique artists
   const response = await client.scroll(collection, {
-    limit: 1000, // Adjust based on collection size
+    limit: 1000,
     with_payload: true,
     with_vector: false,
   });
@@ -229,7 +540,7 @@ async function countUniqueArtists(
 
   return {
     count: artists.size,
-    artists: Array.from(artists).slice(0, 20), // Show first 20
+    artists: Array.from(artists).slice(0, 20),
   };
 }
 
@@ -238,16 +549,14 @@ async function searchImages(
   filter: any,
   limit: number
 ): Promise<any> {
-  // For now, let's get all images and filter in memory to avoid index requirements
   const response = await client.scroll(collection, {
-    limit: 1000, // Get more to filter from
+    limit: 1000,
     with_payload: true,
     with_vector: false,
   });
 
   let filteredPoints = response.points;
 
-  // Apply filters in memory if provided
   if (filter) {
     filteredPoints = response.points.filter((point: any) => {
       return Object.entries(filter).every(([key, value]) => {
@@ -256,7 +565,6 @@ async function searchImages(
     });
   }
 
-  // Limit results
   const limitedPoints = filteredPoints.slice(0, limit);
 
   return {
@@ -326,18 +634,17 @@ async function generateResponse(
   data: any,
   provider: EmbeddingProvider
 ): Promise<string> {
-  // Simple fallback responses
   const fallbackResponse = generateFallbackResponse(question, intent, data);
 
-  // If no API keys, use fallback
   if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
     return fallbackResponse;
   }
 
-  const systemPrompt = `You are a helpful assistant that explains database query results in natural language.
+  const systemPrompt = `You are a helpful assistant that explains vector database query results in natural language.
   
 The user asked: "${question}"
 The query type was: ${intent.type}
+The query scope was: ${intent.scope}
 The data returned is: ${JSON.stringify(data, null, 2)}
 
 Provide a concise, natural language response that directly answers the user's question. Be specific with numbers and names when available.`;
@@ -347,7 +654,7 @@ Provide a concise, natural language response that directly answers the user's qu
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // Use valid Gemini model
+        model: "gemini-2.0-flash", // Use stable Gemini 2.0 Flash model
       });
       const result = await model.generateContent(systemPrompt);
       response = result.response.text();
@@ -375,6 +682,56 @@ function generateFallbackResponse(
   intent: QueryIntent,
   data: any
 ): string {
+  if (intent.scope === "database") {
+    switch (intent.type) {
+      case "count":
+        if (intent.target === "collections") {
+          return `I found ${data.count || 0} collections in the database: ${
+            data.collections?.join(", ") || "None found"
+          }.`;
+        }
+        if (intent.target === "artists") {
+          return `I found ${
+            data.count || 0
+          } unique artists across all collections. Some of them include: ${
+            data.artists?.slice(0, 5).join(", ") || "No artists found"
+          }.`;
+        }
+        if (intent.target === "total") {
+          return `The database contains ${
+            data.count || 0
+          } total vectors across all collections.`;
+        }
+        break;
+      case "collections":
+        return `The database contains ${
+          data.collections?.length || 0
+        } collections: ${
+          data.collections
+            ?.map((c: any) => `${c.name} (${c.vectors_count || 0} vectors)`)
+            .join(", ") || "None found"
+        }.`;
+      case "database":
+        return `The database contains ${
+          data.total_collections || 0
+        } collections with a total of ${data.total_vectors || 0} vectors.`;
+      case "search":
+        return `I searched across ${
+          data.collections_searched || 0
+        } collections and found ${data.total_count || 0} matching items.`;
+      case "list":
+        if (intent.target === "artists") {
+          return `I found ${
+            data.artists?.length || 0
+          } unique artists across all collections: ${
+            data.artists?.slice(0, 10).join(", ") || "No artists found"
+          }.`;
+        }
+        break;
+    }
+  }
+
+  // Collection-level responses (existing logic)
   switch (intent.type) {
     case "count":
       if (intent.target === "artists") {
@@ -410,4 +767,88 @@ function generateFallbackResponse(
     default:
       return "I processed your query successfully using pattern matching.";
   }
+}
+
+// New database-level functions for artists and total counts
+async function countArtistsAcrossDatabase(): Promise<{
+  count: number;
+  artists: string[];
+}> {
+  const collectionsData = await listCollections();
+  const allArtists = new Set<string>();
+
+  // Collect artists from each collection
+  for (const collection of collectionsData.collections) {
+    try {
+      if (collection.vectors_count && collection.vectors_count > 0) {
+        const artistsData = await countUniqueArtists(collection.name);
+        artistsData.artists.forEach((artist) => allArtists.add(artist));
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to get artists from collection ${collection.name}:`,
+        error
+      );
+    }
+  }
+
+  return {
+    count: allArtists.size,
+    artists: Array.from(allArtists).slice(0, 20), // Show first 20
+  };
+}
+
+async function countTotalVectorsAcrossDatabase(): Promise<{
+  count: number;
+  by_collection: Array<{ name: string; count: number }>;
+}> {
+  const collectionsData = await listCollections();
+  const totalVectors = collectionsData.collections.reduce(
+    (sum, col) => sum + (col.vectors_count || 0),
+    0
+  );
+
+  return {
+    count: totalVectors,
+    by_collection: collectionsData.collections.map((col) => ({
+      name: col.name,
+      count: col.vectors_count || 0,
+    })),
+  };
+}
+
+async function listArtistsAcrossDatabase(limit: number): Promise<{
+  artists: string[];
+  by_collection: Array<{ collection: string; artists: string[] }>;
+}> {
+  const collectionsData = await listCollections();
+  const allArtists = new Set<string>();
+  const byCollection: Array<{ collection: string; artists: string[] }> = [];
+
+  // Collect artists from each collection
+  for (const collection of collectionsData.collections) {
+    try {
+      if (collection.vectors_count && collection.vectors_count > 0) {
+        const artistsData = await listUniqueArtists(
+          collection.name,
+          Math.min(limit, 20)
+        );
+        artistsData.artists.forEach((artist) => allArtists.add(artist));
+        byCollection.push({
+          collection: collection.name,
+          artists: artistsData.artists,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to get artists from collection ${collection.name}:`,
+        error
+      );
+    }
+  }
+
+  return {
+    artists: Array.from(allArtists).slice(0, limit),
+    by_collection: byCollection,
+  };
 }

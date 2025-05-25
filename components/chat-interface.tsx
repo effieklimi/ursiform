@@ -13,8 +13,8 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [collection, setCollection] = useState("midjourneysample");
-  const [provider, setProvider] = useState<"openai" | "gemini">("openai");
+  const [collection, setCollection] = useState("");
+  const [provider, setProvider] = useState<"openai" | "gemini">("gemini");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -42,9 +42,9 @@ export default function ChatInterface() {
 
     try {
       const request: NaturalQueryRequest = {
-        collection,
         question: input.trim(),
         provider,
+        ...(collection.trim() && { collection: collection.trim() }),
       };
 
       const response = await askQuestion(request);
@@ -82,6 +82,96 @@ export default function ChatInterface() {
     if (typeof data === "object" && data !== null) {
       const obj = data as Record<string, unknown>;
 
+      if ("total_collections" in obj) {
+        return (
+          <div className="mt-2 p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="h-4 w-4" />
+              <span className="font-medium">Database Overview</span>
+            </div>
+            <div className="text-sm space-y-1">
+              <div>
+                Collections:{" "}
+                <span className="font-mono">
+                  {String(obj.total_collections)}
+                </span>
+              </div>
+              <div>
+                Total Vectors:{" "}
+                <span className="font-mono">{String(obj.total_vectors)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if ("collections" in obj && Array.isArray(obj.collections)) {
+        return (
+          <div className="mt-2 p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="h-4 w-4" />
+              <span className="font-medium">Collections</span>
+            </div>
+            <div className="text-sm space-y-1">
+              {(
+                obj.collections as Array<{
+                  name: string;
+                  vectors_count?: number;
+                }>
+              )
+                .slice(0, 5)
+                .map((col, i) => (
+                  <div key={i}>
+                    {col.name}{" "}
+                    {col.vectors_count !== undefined &&
+                      `(${col.vectors_count} vectors)`}
+                  </div>
+                ))}
+              {(
+                obj.collections as Array<{
+                  name: string;
+                  vectors_count?: number;
+                }>
+              ).length > 5 && (
+                <div className="text-muted-foreground">
+                  ...and{" "}
+                  {(
+                    obj.collections as Array<{
+                      name: string;
+                      vectors_count?: number;
+                    }>
+                  ).length - 5}{" "}
+                  more
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      if ("total_count" in obj && "results_by_collection" in obj) {
+        return (
+          <div className="mt-2 p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="h-4 w-4" />
+              <span className="font-medium">Cross-Collection Search</span>
+            </div>
+            <div className="text-sm space-y-1">
+              <div>
+                Total Results:{" "}
+                <span className="font-mono">{String(obj.total_count)}</span>
+              </div>
+              <div>
+                Collections Searched:{" "}
+                <span className="font-mono">
+                  {String(obj.collections_searched)}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       if ("count" in obj && typeof obj.count === "number") {
         return (
           <div className="mt-2 p-3 bg-muted rounded-lg">
@@ -91,12 +181,47 @@ export default function ChatInterface() {
             </div>
             <div className="text-sm space-y-1">
               <div>
-                Count: <span className="font-mono">{obj.count}</span>
+                Count: <span className="font-mono">{String(obj.count)}</span>
               </div>
               {obj.artists && Array.isArray(obj.artists) && (
                 <div>
                   Sample: {(obj.artists as string[]).slice(0, 3).join(", ")}
                   {(obj.artists as string[]).length > 3 && "..."}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      if ("by_collection" in obj && Array.isArray(obj.by_collection)) {
+        return (
+          <div className="mt-2 p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="h-4 w-4" />
+              <span className="font-medium">Vector Count by Collection</span>
+            </div>
+            <div className="text-sm space-y-1">
+              <div>
+                Total: <span className="font-mono">{String(obj.count)}</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-2">
+                Breakdown:
+              </div>
+              {(obj.by_collection as Array<{ name: string; count: number }>)
+                .slice(0, 5)
+                .map((col, i) => (
+                  <div key={i} className="text-xs ml-2">
+                    {col.name}: {col.count} vectors
+                  </div>
+                ))}
+              {(obj.by_collection as Array<{ name: string; count: number }>)
+                .length > 5 && (
+                <div className="text-xs text-muted-foreground ml-2">
+                  ...and{" "}
+                  {(obj.by_collection as Array<{ name: string; count: number }>)
+                    .length - 5}{" "}
+                  more
                 </div>
               )}
             </div>
@@ -115,7 +240,7 @@ export default function ChatInterface() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            Natural Language Query Interface
+            Natural Language Database Interface
           </CardTitle>
           <div className="flex flex-wrap gap-2 mt-2">
             <div className="flex items-center gap-2">
@@ -123,8 +248,8 @@ export default function ChatInterface() {
               <Input
                 value={collection}
                 onChange={(e) => setCollection(e.target.value)}
-                className="w-40 h-8"
-                placeholder="Collection name"
+                className="w-48 h-8"
+                placeholder="Optional (leave empty for database queries)"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -136,10 +261,14 @@ export default function ChatInterface() {
                 }
                 className="h-8 px-3 rounded-md border border-input bg-background text-sm"
               >
-                <option value="openai">OpenAI</option>
                 <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
               </select>
             </div>
+          </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            Leave collection empty to ask database-level questions like "What
+            collections exist?" or "How many collections are there?"
           </div>
         </CardHeader>
       </Card>
@@ -151,12 +280,22 @@ export default function ChatInterface() {
             <div className="text-center text-muted-foreground py-8">
               <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2">
-                Ask me anything about your collection!
+                Ask me anything about your vector database!
               </h3>
-              <p className="text-sm">
-                Try questions like "How many artists are there?" or "Find images
-                by Chris Dyer"
-              </p>
+              <div className="text-sm space-y-1">
+                <p>
+                  <strong>Database queries:</strong> "What collections exist?",
+                  "How many collections?"
+                </p>
+                <p>
+                  <strong>Collection queries:</strong> "How many artists?",
+                  "Find images by Chris Dyer"
+                </p>
+                <p>
+                  <strong>Cross-collection:</strong> "Find Chris Dyer images
+                  across all collections"
+                </p>
+              </div>
             </div>
           )}
 
@@ -245,7 +384,7 @@ export default function ChatInterface() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question about your collection..."
+              placeholder="Ask a question about your vector database..."
               disabled={isLoading}
               className="flex-1"
             />
@@ -253,10 +392,6 @@ export default function ChatInterface() {
               <Send className="h-4 w-4" />
             </Button>
           </form>
-          <div className="text-xs text-muted-foreground mt-2">
-            Try: "How many artists?", "Find images by Chris Dyer", "Describe
-            this collection"
-          </div>
         </div>
       </Card>
     </div>

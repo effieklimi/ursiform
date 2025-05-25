@@ -25,19 +25,21 @@ export default async function handler(
   try {
     const { collection, question, provider } = req.body as NaturalQueryRequest;
 
-    if (!collection || !question) {
+    if (!question) {
       res.status(400).json({
-        error: "Missing required fields: collection and question",
+        error: "Missing required field: question",
       });
       return;
     }
 
     console.log(
-      `Processing natural language query: "${question}" for collection: ${collection}`
+      `Processing natural language query: "${question}" for collection: ${
+        collection || "database-level"
+      }`
     );
 
     const result = await processNaturalQuery(
-      collection,
+      collection || null, // Allow null for database-level queries
       question,
       provider || "openai"
     );
