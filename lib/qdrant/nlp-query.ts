@@ -20,12 +20,16 @@ interface QueryIntent {
     | "collections"
     | "database"
     | "summarize"
-    | "analyze";
+    | "analyze"
+    | "top"
+    | "ranking"; // Add new query types for complex queries
   target: string; // what to count/search/list
   filter?: any; // any filters to apply
   limit?: number;
   scope: "collection" | "database"; // new: scope of the query
   extractedCollection?: string; // new: collection name extracted from query text
+  sortBy?: string; // new: what to sort by (e.g., "image_count", "popularity")
+  sortOrder?: "asc" | "desc"; // new: sort order
 }
 
 export async function processNaturalQuery(
@@ -243,15 +247,41 @@ async function resolveContext(
     // If no collection specified but we have context, check if query seems collection-specific
     if (
       lowercaseQuestion.includes("this collection") ||
+      lowercaseQuestion.includes("that collection") ||
       lowercaseQuestion.includes("same collection") ||
+      lowercaseQuestion.includes("the collection") ||
+      lowercaseQuestion.includes("in that") ||
+      lowercaseQuestion.includes("in this") ||
       (!lowercaseQuestion.includes("all collections") &&
-        !lowercaseQuestion.includes("database"))
+        !lowercaseQuestion.includes("database") &&
+        !lowercaseQuestion.includes("across collections"))
     ) {
       console.log(
         "🔄 Resolving collection context to:",
         currentContext.lastCollection
       );
       resolvedCollection = currentContext.lastCollection;
+    }
+  }
+
+  // Special handling for queries that reference previous results
+  if (currentContext.conversationHistory.length > 0) {
+    const lastTurn =
+      currentContext.conversationHistory[
+        currentContext.conversationHistory.length - 1
+      ];
+
+    // If the last query returned collection-specific results, use that collection
+    if (lastTurn.result?.results_by_collection && !resolvedCollection) {
+      const collectionsWithResults =
+        lastTurn.result.results_by_collection.filter((r: any) => r.count > 0);
+      if (collectionsWithResults.length === 1) {
+        console.log(
+          "🔄 Inferring collection from previous results:",
+          collectionsWithResults[0].collection
+        );
+        resolvedCollection = collectionsWithResults[0].collection;
+      }
     }
   }
 
@@ -341,15 +371,25 @@ async function parseQueryIntent(
 
   // Build context-aware system prompt
   let systemPrompt = `You are a query intent parser for a vector database system. Parse the user's question to determine:
-1. Query type (count, search, list, filter, describe, summarize, analyze, collections, database)
+1. Query type (count, search, list, filter, describe, summarize, analyze, collections, database, top, ranking)
 2. What to target (items, entities, collections, etc.)
 3. Any filters to apply (especially entity names)
 4. Query scope (collection-specific or database-wide)
 5. Collection name if mentioned
+6. Sort criteria for ranking queries
 
 Available scopes:
 - "collection": query operates on a specific collection
 - "database": query operates on the entire database
+
+Available query types:
+- "top": find top N items by some criteria (e.g., "top 5 artists by image count")
+- "ranking": rank items by some criteria (e.g., "which artist has the most images")
+- "count": count items matching criteria
+- "search": find specific items
+- "list": list items or entities
+- "summarize": provide summary of items
+- "analyze": analyze patterns in items
 
 IMPORTANT: Extract entity names from natural language variations:
 - "by [Name]", "from [Name]", "of [Name]"
@@ -357,6 +397,11 @@ IMPORTANT: Extract entity names from natural language variations:
 - "pieces by [Name]", "work by [Name]", "items by [Name]"
 - "[Name] items", "[Name] work", "[Name] pieces"
 - Look for proper nouns (capitalized names) that could be entities
+
+For ranking/top queries, identify what to sort by:
+- "most images" → sortBy: "image_count", sortOrder: "desc"
+- "least popular" → sortBy: "popularity", sortOrder: "asc"
+- "top artists" → sortBy: "image_count", sortOrder: "desc"
 
 When you find an entity name, put it in the filter with a generic field name "name".`;
 
@@ -409,16 +454,21 @@ For example:
 
 Return ONLY a JSON object in this format:
 {
-  "type": "count|search|list|filter|describe|summarize|analyze|collections|database",
+  "type": "count|search|list|filter|describe|summarize|analyze|collections|database|top|ranking",
   "target": "what to count/search/list (e.g., 'items', 'entities', 'collections')",
   "filter": {"name": "extracted_entity_name"} or null,
   "limit": number or null,
   "scope": "collection|database",
-  "extractedCollection": "collection_name_if_mentioned_in_query" or null
+  "extractedCollection": "collection_name_if_mentioned_in_query" or null,
+  "sortBy": "image_count|popularity|name" or null,
+  "sortOrder": "asc|desc" or null
 }
 
 Examples:
 - "How many items by John Doe?" → {"type": "count", "target": "items", "filter": {"name": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
+- "Which artist has the most images?" → {"type": "ranking", "target": "entities", "filter": null, "limit": 1, "scope": "database", "extractedCollection": null, "sortBy": "image_count", "sortOrder": "desc"}
+- "Top 5 artists by image count in mycollection" → {"type": "top", "target": "entities", "filter": null, "limit": 5, "scope": "collection", "extractedCollection": "mycollection", "sortBy": "image_count", "sortOrder": "desc"}
+- "Which artist in that collection has the most images?" → {"type": "ranking", "target": "entities", "filter": null, "limit": 1, "scope": "collection", "extractedCollection": null, "sortBy": "image_count", "sortOrder": "desc"}
 - "Summarize Alice Smith's work in mycollection" → {"type": "summarize", "target": "items", "filter": {"name": "Alice Smith"}, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
 - "Can you summarise the pieces done by Bob Johnson?" → {"type": "summarize", "target": "items", "filter": {"name": "Bob Johnson"}, "limit": 10, "scope": "database", "extractedCollection": null}
 - "Find all Maria Garcia artwork" → {"type": "search", "target": "items", "filter": {"name": "Maria Garcia"}, "limit": 20, "scope": "database", "extractedCollection": null}
@@ -527,6 +577,63 @@ function inferIntentFromQuestion(
         /\b(their|his|her)\b/gi,
         context.lastEntity + "'s"
       );
+    }
+  }
+
+  // Handle ranking and "most" queries
+  if (
+    q.includes("which") &&
+    (q.includes("most") ||
+      q.includes("top") ||
+      q.includes("best") ||
+      q.includes("highest"))
+  ) {
+    const scope = extractedCollection ? "collection" : "database";
+
+    if (q.includes("artist") && q.includes("most") && q.includes("image")) {
+      return {
+        type: "ranking",
+        target: "entities",
+        filter: null,
+        limit: 1,
+        scope,
+        sortBy: "image_count",
+        sortOrder: "desc",
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+
+    if (q.includes("artist") && q.includes("most")) {
+      return {
+        type: "ranking",
+        target: "entities",
+        filter: null,
+        limit: 1,
+        scope,
+        sortBy: "image_count",
+        sortOrder: "desc",
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+  }
+
+  // Handle "top N" queries
+  if (q.includes("top") && /top\s+(\d+)/.test(q)) {
+    const limitMatch = q.match(/top\s+(\d+)/);
+    const limit = limitMatch ? parseInt(limitMatch[1]) : 5;
+    const scope = extractedCollection ? "collection" : "database";
+
+    if (q.includes("artist")) {
+      return {
+        type: "top",
+        target: "entities",
+        filter: null,
+        limit,
+        scope,
+        sortBy: "image_count",
+        sortOrder: "desc",
+        ...(extractedCollection && { extractedCollection }),
+      };
     }
   }
 
@@ -730,8 +837,8 @@ function extractCollectionFromQuestion(question: string): string | undefined {
   ];
 
   for (const pattern of patterns) {
-    const matches = [...q.matchAll(pattern)];
-    for (const match of matches) {
+    let match;
+    while ((match = pattern.exec(q)) !== null) {
       const candidate = match[1];
       // Filter out common words that aren't collection names
       if (
@@ -834,8 +941,15 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
       break;
 
     case "list":
-      if (intent.target === "artists") {
+      if (intent.target === "artists" || intent.target === "entities") {
         return await listArtistsAcrossDatabase(intent.limit || 50);
+      }
+      break;
+
+    case "top":
+    case "ranking":
+      if (intent.target === "entities" && intent.sortBy === "image_count") {
+        return await getTopArtistsByImageCountAcrossDatabase(intent.limit || 1);
       }
       break;
 
@@ -885,7 +999,7 @@ async function executeCollectionQuery(
       );
 
     case "list":
-      if (intent.target === "artists") {
+      if (intent.target === "artists" || intent.target === "entities") {
         return await listUniqueArtists(collection, intent.limit || 50);
       } else {
         return await listImages(collection, intent.limit || 20);
@@ -896,6 +1010,16 @@ async function executeCollectionQuery(
 
     case "describe":
       return await describeCollection(collection);
+
+    case "top":
+    case "ranking":
+      if (intent.target === "entities" && intent.sortBy === "image_count") {
+        return await getTopArtistsByImageCountInCollection(
+          collection,
+          intent.limit || 1
+        );
+      }
+      break;
 
     default:
       throw new Error(`Unknown collection-level query type: ${intent.type}`);
@@ -1003,19 +1127,36 @@ async function countTotal(collection: string): Promise<{ count: number }> {
 async function countUniqueArtists(
   collection: string
 ): Promise<{ count: number; artists: string[] }> {
-  const response = await client.scroll(collection, {
-    limit: 1000,
-    with_payload: true,
-    with_vector: false,
-  });
+  // Get ALL points from the collection, not just 1000
+  let allPoints: any[] = [];
+  let offset: string | number | undefined = undefined;
+
+  // Scroll through all points in the collection
+  do {
+    const response = await client.scroll(collection, {
+      limit: 1000, // Process in batches of 1000
+      ...(offset !== undefined && { offset }),
+      with_payload: true,
+      with_vector: false,
+    });
+
+    allPoints.push(...response.points);
+    // Safely handle the offset type
+    const nextOffset = response.next_page_offset;
+    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+      offset = nextOffset;
+    } else {
+      offset = undefined;
+    }
+  } while (offset !== null && offset !== undefined);
 
   const artists = new Set(
-    response.points.map((point: any) => point.payload?.name).filter(Boolean)
+    allPoints.map((point: any) => point.payload?.name).filter(Boolean)
   );
 
   return {
     count: artists.size,
-    artists: Array.from(artists).slice(0, 20),
+    artists: Array.from(artists).slice(0, 20), // Still limit the returned list for display
   };
 }
 
@@ -1052,17 +1193,35 @@ async function listUniqueArtists(
   collection: string,
   limit: number
 ): Promise<{ artists: string[] }> {
-  const response = await client.scroll(collection, {
-    limit,
-    with_payload: true,
-    with_vector: false,
-  });
+  // Get ALL points from the collection to ensure accurate artist listing
+  let allPoints: any[] = [];
+  let offset: string | number | undefined = undefined;
+
+  // Scroll through all points in the collection
+  do {
+    const response = await client.scroll(collection, {
+      limit: 1000, // Process in batches of 1000
+      ...(offset !== undefined && { offset }),
+      with_payload: true,
+      with_vector: false,
+    });
+
+    allPoints.push(...response.points);
+    // Safely handle the offset type
+    const nextOffset = response.next_page_offset;
+    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+      offset = nextOffset;
+    } else {
+      offset = undefined;
+    }
+  } while (offset !== null && offset !== undefined);
 
   const artists = new Set(
-    response.points.map((point: any) => point.payload?.name).filter(Boolean)
+    allPoints.map((point: any) => point.payload?.name).filter(Boolean)
   );
 
-  return { artists: Array.from(artists) };
+  // Return the requested number of artists
+  return { artists: Array.from(artists).slice(0, limit) };
 }
 
 async function listImages(collection: string, limit: number): Promise<any> {
@@ -1120,10 +1279,16 @@ async function generateResponse(
   
 The user asked: "${question}"
 The query type was: ${intent.type}
-The query scope was: ${intent.scope}
 The data returned is: ${JSON.stringify(data, null, 2)}
 
-Provide a concise, natural language response that directly answers the user's question. Be specific with numbers and names when available.`;
+IMPORTANT GUIDELINES FOR RANKING/TOP QUERIES:
+- If there are ties (multiple artists with the same count), ALWAYS mention this explicitly
+- Don't say "X has the most" if there are ties - say "X is tied for the most" or "X and Y are tied"
+- Pay attention to the "has_tie", "tie_count", and "artists_with_max_count" fields in the data
+- Be precise with singular/plural forms (1 image vs 2 images)
+- If the user asked for "the artist with most" but there's a tie, explain the tie situation clearly
+
+Provide a concise, natural language response that directly answers the user's question. Be specific with numbers and names when available, and always be accurate about ties and rankings.`;
 
   try {
     let response: string;
@@ -1357,6 +1522,73 @@ function generateFallbackResponse(
       } unique artists. Some featured artists include: ${
         safeData.sample_artists?.slice(0, 5).join(", ") || "No artists found"
       }.`;
+
+    case "top":
+    case "ranking":
+      if (safeData.top_artists && safeData.top_artists.length > 0) {
+        // Check for ties at the top
+        if (safeData.has_tie && intent.limit === 1) {
+          // Handle the case where user asked for "the artist with most" but there's a tie
+          const tiedArtists =
+            safeData.artists_with_max_count ||
+            safeData.top_artists.filter(
+              (artist: any) => artist.image_count === safeData.max_image_count
+            );
+
+          if (tiedArtists.length === 2) {
+            return `There's a tie! Both ${tiedArtists[0].name} and ${
+              tiedArtists[1].name
+            } have the most images with ${safeData.max_image_count} image${
+              safeData.max_image_count === 1 ? "" : "s"
+            } each.`;
+          } else if (tiedArtists.length > 2) {
+            const lastArtist = tiedArtists[tiedArtists.length - 1].name;
+            const otherArtists = tiedArtists
+              .slice(0, -1)
+              .map((a: any) => a.name)
+              .join(", ");
+            return `There's a ${
+              tiedArtists.length
+            }-way tie! ${otherArtists}, and ${lastArtist} all have the most images with ${
+              safeData.max_image_count
+            } image${safeData.max_image_count === 1 ? "" : "s"} each.`;
+          }
+        }
+
+        // Handle regular cases (no tie or user asked for multiple results)
+        if (intent.limit === 1 && !safeData.has_tie) {
+          const topArtist = safeData.top_artists[0];
+          return `${topArtist.name} has the most images with ${
+            topArtist.image_count
+          } image${topArtist.image_count === 1 ? "" : "s"}.`;
+        } else {
+          // Multiple results or tie situation where we show the list
+          const artistList = safeData.top_artists
+            .map(
+              (artist: any, index: number) =>
+                `${index + 1}. ${artist.name} (${artist.image_count} image${
+                  artist.image_count === 1 ? "" : "s"
+                })`
+            )
+            .join(", ");
+
+          let response = `Top ${
+            intent.limit || safeData.top_artists.length
+          } artists by image count: ${artistList}`;
+
+          // Add tie information if relevant
+          if (safeData.has_tie && safeData.tie_count > 1) {
+            response += `. Note: ${
+              safeData.tie_count
+            } artists are tied for the highest count of ${
+              safeData.max_image_count
+            } image${safeData.max_image_count === 1 ? "" : "s"}.`;
+          }
+
+          return response;
+        }
+      }
+      return "No artists found with images.";
 
     default:
       return "I processed your query successfully using pattern matching.";
@@ -1697,5 +1929,216 @@ async function summarizeArtistAcrossDatabase(
         c.images?.some((img: any) => img.id === image.id)
       )?.collection,
     })),
+  };
+}
+
+async function getTopArtistsByImageCountAcrossDatabase(
+  limit: number
+): Promise<any> {
+  const collectionsData = await listCollections();
+  const artistCounts: {
+    [artistName: string]: { count: number; collections: string[] };
+  } = {};
+
+  // Collect artist counts from all collections
+  for (const collection of collectionsData.collections) {
+    try {
+      if (collection.vectors_count && collection.vectors_count > 0) {
+        // Get ALL points from the collection to count by artist
+        let allPoints: any[] = [];
+        let offset: string | number | undefined = undefined;
+
+        // Scroll through all points in the collection
+        do {
+          const scrollResult = await client.scroll(collection.name, {
+            limit: 1000, // Process in batches of 1000
+            ...(offset !== undefined && { offset }),
+            with_payload: true,
+          });
+
+          allPoints.push(...scrollResult.points);
+          // Safely handle the offset type
+          const nextOffset = scrollResult.next_page_offset;
+          if (
+            typeof nextOffset === "string" ||
+            typeof nextOffset === "number"
+          ) {
+            offset = nextOffset;
+          } else {
+            offset = undefined;
+          }
+        } while (offset !== null && offset !== undefined);
+
+        for (const point of allPoints) {
+          const artistName = point.payload?.name;
+          if (artistName && typeof artistName === "string") {
+            if (!artistCounts[artistName]) {
+              artistCounts[artistName] = { count: 0, collections: [] };
+            }
+            artistCounts[artistName].count++;
+            if (
+              !artistCounts[artistName].collections.includes(collection.name)
+            ) {
+              artistCounts[artistName].collections.push(collection.name);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to get artists from collection ${collection.name}:`,
+        error
+      );
+    }
+  }
+
+  // Sort artists by image count
+  const sortedArtists = Object.entries(artistCounts)
+    .map(([name, data]) => ({
+      name,
+      image_count: data.count,
+      collections: data.collections,
+    }))
+    .sort((a, b) => b.image_count - a.image_count);
+
+  // Analyze the distribution to detect ties
+  const maxCount = sortedArtists.length > 0 ? sortedArtists[0].image_count : 0;
+  const artistsWithMaxCount = sortedArtists.filter(
+    (artist) => artist.image_count === maxCount
+  );
+  const hasTie = artistsWithMaxCount.length > 1;
+
+  // Get the requested number of top artists
+  const topArtists = sortedArtists.slice(0, limit);
+
+  // Calculate some statistics
+  const totalImages = Object.values(artistCounts).reduce(
+    (sum, data) => sum + data.count,
+    0
+  );
+  const averageImagesPerArtist = totalImages / Object.keys(artistCounts).length;
+
+  // Group artists by image count for better analysis
+  const countGroups: { [count: number]: string[] } = {};
+  sortedArtists.forEach((artist) => {
+    if (!countGroups[artist.image_count]) {
+      countGroups[artist.image_count] = [];
+    }
+    countGroups[artist.image_count].push(artist.name);
+  });
+
+  return {
+    top_artists: topArtists,
+    total_artists_found: Object.keys(artistCounts).length,
+    collections_searched: collectionsData.collections.length,
+    max_image_count: maxCount,
+    artists_with_max_count: artistsWithMaxCount,
+    has_tie: hasTie,
+    tie_count: artistsWithMaxCount.length,
+    total_images: totalImages,
+    average_images_per_artist: Math.round(averageImagesPerArtist * 100) / 100,
+    distribution: countGroups,
+    analysis: {
+      is_evenly_distributed:
+        Object.keys(countGroups).length === Object.keys(artistCounts).length,
+      most_common_count:
+        Object.entries(countGroups).sort(
+          (a, b) => b[1].length - a[1].length
+        )[0]?.[0] || "0",
+    },
+  };
+}
+
+async function getTopArtistsByImageCountInCollection(
+  collection: string,
+  limit: number
+): Promise<any> {
+  // Get ALL points from the collection, not just 1000
+  let allPoints: any[] = [];
+  let offset: string | number | undefined = undefined;
+
+  // Scroll through all points in the collection
+  do {
+    const response = await client.scroll(collection, {
+      limit: 1000, // Process in batches of 1000
+      ...(offset !== undefined && { offset }),
+      with_payload: true,
+      with_vector: false,
+    });
+
+    allPoints.push(...response.points);
+    // Safely handle the offset type
+    const nextOffset = response.next_page_offset;
+    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+      offset = nextOffset;
+    } else {
+      offset = undefined;
+    }
+  } while (offset !== null && offset !== undefined);
+
+  const artistCounts: { [artistName: string]: number } = {};
+
+  for (const point of allPoints) {
+    const artistName = point.payload?.name;
+    if (artistName && typeof artistName === "string") {
+      if (!artistCounts[artistName]) {
+        artistCounts[artistName] = 0;
+      }
+      artistCounts[artistName]++;
+    }
+  }
+
+  const sortedArtists = Object.entries(artistCounts)
+    .map(([name, count]) => ({
+      name,
+      image_count: count,
+    }))
+    .sort((a, b) => b.image_count - a.image_count);
+
+  // Analyze the distribution to detect ties
+  const maxCount = sortedArtists.length > 0 ? sortedArtists[0].image_count : 0;
+  const artistsWithMaxCount = sortedArtists.filter(
+    (artist) => artist.image_count === maxCount
+  );
+  const hasTie = artistsWithMaxCount.length > 1;
+
+  // Get the requested number of top artists
+  const topArtists = sortedArtists.slice(0, limit);
+
+  // Calculate some statistics
+  const totalImages = Object.values(artistCounts).reduce(
+    (sum, count) => sum + count,
+    0
+  );
+  const averageImagesPerArtist = totalImages / Object.keys(artistCounts).length;
+
+  // Group artists by image count for better analysis
+  const countGroups: { [count: number]: string[] } = {};
+  sortedArtists.forEach((artist) => {
+    if (!countGroups[artist.image_count]) {
+      countGroups[artist.image_count] = [];
+    }
+    countGroups[artist.image_count].push(artist.name);
+  });
+
+  return {
+    top_artists: topArtists,
+    total_artists_found: Object.keys(artistCounts).length,
+    collections_searched: 1,
+    max_image_count: maxCount,
+    artists_with_max_count: artistsWithMaxCount,
+    has_tie: hasTie,
+    tie_count: artistsWithMaxCount.length,
+    total_images: totalImages,
+    average_images_per_artist: Math.round(averageImagesPerArtist * 100) / 100,
+    distribution: countGroups,
+    analysis: {
+      is_evenly_distributed:
+        Object.keys(countGroups).length === Object.keys(artistCounts).length,
+      most_common_count:
+        Object.entries(countGroups).sort(
+          (a, b) => b[1].length - a[1].length
+        )[0]?.[0] || "0",
+    },
   };
 }
