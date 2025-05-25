@@ -170,7 +170,83 @@ curl -X POST http://localhost:8000/collections \
 
 Response: `{"success":true}`
 
-### Upsert Vectors
+### Add Document (Automatic Embedding) ⭐ **RECOMMENDED**
+
+Add a single document with automatic embedding generation:
+
+```bash
+curl -X POST http://localhost:8000/collections/my_collection/documents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document": {
+      "id": "doc-1",
+      "text": "This is a comprehensive guide to machine learning algorithms and their applications in modern AI systems.",
+      "metadata": {
+        "title": "ML Guide",
+        "category": "education",
+        "author": "Jane Doe",
+        "tags": ["machine learning", "AI", "algorithms"]
+      }
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "id": "doc-1",
+  "message": "Document doc-1 added successfully"
+}
+```
+
+### Bulk Add Documents (Automatic Embedding)
+
+Add multiple documents with automatic embedding generation:
+
+```bash
+curl -X POST http://localhost:8000/collections/my_collection/documents/bulk \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documents": [
+      {
+        "id": "doc-1",
+        "text": "Introduction to artificial intelligence and machine learning concepts.",
+        "metadata": {
+          "category": "AI",
+          "level": "beginner"
+        }
+      },
+      {
+        "id": "doc-2",
+        "text": "Advanced deep learning techniques for computer vision applications.",
+        "metadata": {
+          "category": "Deep Learning",
+          "level": "advanced"
+        }
+      }
+    ]
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "processed": 2,
+  "failed": 0,
+  "results": [
+    { "id": "doc-1", "success": true },
+    { "id": "doc-2", "success": true }
+  ]
+}
+```
+
+### Upsert Vectors (Manual Vectors)
+
+For advanced users who want to provide pre-computed vectors:
 
 ```bash
 curl -X POST http://localhost:8000/collections/my_collection/vectors \

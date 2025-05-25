@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 
 import { collectionsRoutes } from "./routes/collections";
 import { vectorsRoutes } from "./routes/vectors";
+import { documentsRoutes } from "./routes/documents";
 import { translateRoutes } from "./routes/translate";
 import { healthRoutes } from "./routes/health";
 
@@ -21,6 +22,7 @@ async function start() {
     // Register routes
     await fastify.register(collectionsRoutes);
     await fastify.register(vectorsRoutes);
+    await fastify.register(documentsRoutes);
     await fastify.register(translateRoutes);
     await fastify.register(healthRoutes);
 

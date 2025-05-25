@@ -35,6 +35,48 @@ export const UpsertVectorsResponseSchema = z.object({
 
 export type UpsertVectorsResponse = z.infer<typeof UpsertVectorsResponseSchema>;
 
+// Document schemas (for automatic embedding generation)
+export const DocumentSchema = z.object({
+  id: z.string(),
+  text: z.string().min(1, "Text content is required"),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const AddDocumentSchema = z.object({
+  document: DocumentSchema,
+});
+
+export type AddDocumentRequest = z.infer<typeof AddDocumentSchema>;
+
+export const AddDocumentsSchema = z.object({
+  documents: z.array(DocumentSchema),
+});
+
+export type AddDocumentsRequest = z.infer<typeof AddDocumentsSchema>;
+
+export const AddDocumentResponseSchema = z.object({
+  success: z.boolean(),
+  id: z.string(),
+  message: z.string(),
+});
+
+export type AddDocumentResponse = z.infer<typeof AddDocumentResponseSchema>;
+
+export const AddDocumentsResponseSchema = z.object({
+  success: z.boolean(),
+  processed: z.number(),
+  failed: z.number(),
+  results: z.array(
+    z.object({
+      id: z.string(),
+      success: z.boolean(),
+      error: z.string().optional(),
+    })
+  ),
+});
+
+export type AddDocumentsResponse = z.infer<typeof AddDocumentsResponseSchema>;
+
 // Translate/Search schemas
 export const TranslateQuerySchema = z.object({
   query: z.string().min(1),
