@@ -97,7 +97,9 @@ Examples:
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-preview-04-17",
+      });
       const result = await model.generateContent([
         { text: systemPrompt },
         { text: `Question: "${question}"` },
@@ -331,7 +333,9 @@ Provide a concise, natural language response that directly answers the user's qu
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-preview-04-17",
+      });
       const result = await model.generateContent(systemPrompt);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {

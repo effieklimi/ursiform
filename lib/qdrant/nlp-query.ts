@@ -48,7 +48,20 @@ export async function processNaturalQuery(
     };
   } catch (error) {
     console.error("Error processing natural query:", error);
-    throw new Error("Failed to process natural language query");
+
+    // Create fallback response even if everything fails
+    const fallbackAnswer =
+      "I encountered an issue processing your query, but I'm using pattern matching to help. " +
+      generateFallbackResponse(question, inferIntentFromQuestion(question), {
+        count: 0,
+      });
+
+    return {
+      answer: fallbackAnswer,
+      query_type: "fallback",
+      data: null,
+      execution_time_ms: Date.now() - startTime,
+    };
   }
 }
 
@@ -97,7 +110,9 @@ Examples:
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash", // Use valid Gemini model
+      });
       const result = await model.generateContent([
         { text: systemPrompt },
         { text: `Question: "${question}"` },
@@ -331,7 +346,9 @@ Provide a concise, natural language response that directly answers the user's qu
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash", // Use valid Gemini model
+      });
       const result = await model.generateContent(systemPrompt);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
@@ -362,35 +379,35 @@ function generateFallbackResponse(
     case "count":
       if (intent.target === "artists") {
         return `I found ${
-          data.count
-        } unique artists in the collection. Some of them include: ${data.artists
-          ?.slice(0, 5)
-          .join(", ")}.`;
+          data.count || 0
+        } unique artists in the collection. Some of them include: ${
+          data.artists?.slice(0, 5).join(", ") || "No artists found"
+        }.`;
       } else {
-        return `The collection contains ${data.count} total images.`;
+        return `The collection contains ${data.count || 0} total images.`;
       }
 
     case "search":
     case "filter":
-      return `I found ${data.count} images matching your criteria.`;
+      return `I found ${data.count || 0} images matching your criteria.`;
 
     case "list":
       if (intent.target === "artists") {
-        return `Here are the artists in the collection: ${data.artists
-          ?.slice(0, 10)
-          .join(", ")}${data.artists?.length > 10 ? "..." : ""}.`;
+        return `Here are the artists in the collection: ${
+          data.artists?.slice(0, 10).join(", ") || "No artists found"
+        }${data.artists?.length > 10 ? "..." : ""}.`;
       } else {
-        return `I found ${data.count} items in the collection.`;
+        return `I found ${data.count || 0} items in the collection.`;
       }
 
     case "describe":
-      return `This collection contains ${data.total_images} images from ${
-        data.unique_artists
-      } unique artists. Some featured artists include: ${data.sample_artists
-        ?.slice(0, 5)
-        .join(", ")}.`;
+      return `This collection contains ${data.total_images || 0} images from ${
+        data.unique_artists || 0
+      } unique artists. Some featured artists include: ${
+        data.sample_artists?.slice(0, 5).join(", ") || "No artists found"
+      }.`;
 
     default:
-      return "I processed your query successfully.";
+      return "I processed your query successfully using pattern matching.";
   }
 }
