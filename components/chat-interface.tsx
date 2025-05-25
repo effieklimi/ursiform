@@ -1,22 +1,43 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Send, Bot, User, Clock, Database, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { askQuestion } from "@/lib/api";
-import { ChatMessage, NaturalQueryRequest } from "@/lib/types";
-import { Send, Bot, User, Clock, Database } from "lucide-react";
+import { ChatMessage, AVAILABLE_MODELS, ModelKey } from "@/lib/types";
+
+interface DynamicExamples {
+  database: string[];
+  collection: string[];
+}
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [collection, setCollection] = useState("");
-  const [provider, setProvider] = useState<"openai" | "gemini">("gemini");
+  const [selectedCollection, setSelectedCollection] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<ModelKey>("o1");
+  const [collections, setCollections] = useState<string[]>([]);
+  const [demoExamples, setDemoExamples] = useState<DynamicExamples>({
+    database: [
+      "What collections exist in my database?",
+      "How many artists are in the database?",
+      "Describe my database",
+      "How many total vectors are there?",
+    ],
+    collection: [
+      "How many artists are there?",
+      "Find images by artists",
+      "List all artists",
+      "Describe this collection",
+    ],
+  });
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when new messages are added
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -25,375 +46,694 @@ export default function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  // Load collections on mount
+  useEffect(() => {
+    loadCollectionsAndGenerateExamples();
+  }, []);
+
+  const loadCollectionsAndGenerateExamples = async () => {
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: "What collections exist?",
+          model: selectedModel,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.data?.collections) {
+          const collectionsData = data.data.collections;
+          const collectionNames = collectionsData.map((c: any) => c.name);
+          setCollections(collectionNames);
+
+          // Generate dynamic examples based on actual data
+          await generateDynamicExamples(collectionsData);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load collections:", error);
+    }
+  };
+
+  const generateDynamicExamples = async (collectionsData: any[]) => {
+    try {
+      // Find collections with data
+      const collectionsWithData = collectionsData.filter(
+        (c: any) => c.vectors_count > 0
+      );
+      const largestCollection = collectionsData.reduce(
+        (max: any, current: any) =>
+          current.vectors_count > max.vectors_count ? current : max
+      );
+
+      // Generate database-level examples
+      const databaseExamples = [
+        "What collections exist in my database?",
+        `How many total vectors are across all collections?`,
+        "Describe my database overview",
+        collectionsData.length > 1
+          ? "How many artists are there across all collections?"
+          : "How many collections do I have?",
+      ];
+
+      // Generate collection-specific examples
+      let collectionExamples: string[] = [];
+
+      if (collectionsWithData.length > 0) {
+        // Try to get some sample artist data for better examples
+        const sampleCollection = largestCollection.name;
+
+        try {
+          const artistResponse = await fetch("/api/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              collection: sampleCollection,
+              question: "List a few artists",
+              model: selectedModel,
+            }),
+          });
+
+          let sampleArtists: string[] = [];
+          if (artistResponse.ok) {
+            const artistData = await artistResponse.json();
+            if (artistData.data?.artists) {
+              sampleArtists = artistData.data.artists.slice(0, 2);
+            }
+          }
+
+          // Create examples with actual collection names and artist names
+          collectionExamples = [
+            `How many artists in ${sampleCollection}?`,
+            `How many vectors are in ${sampleCollection}?`,
+            sampleArtists.length > 0
+              ? `Find ${sampleArtists[0]} images in ${sampleCollection}`
+              : `Find images in ${sampleCollection}`,
+            `Describe the ${sampleCollection} collection`,
+          ];
+
+          // Add examples for other collections if they exist
+          if (collectionsWithData.length > 1) {
+            const otherCollection = collectionsWithData.find(
+              (c: any) => c.name !== sampleCollection
+            );
+            if (otherCollection) {
+              collectionExamples[1] = `How many artists in ${otherCollection.name}?`;
+            }
+          }
+
+          // Add cross-collection search if we have artists
+          if (sampleArtists.length > 0 && collectionsData.length > 1) {
+            collectionExamples.push(
+              `Find ${sampleArtists[0]} images across all collections`
+            );
+          }
+        } catch (error) {
+          console.warn("Failed to get artist data for examples:", error);
+          // Fallback to collection names only
+          collectionExamples = [
+            `How many artists in ${largestCollection.name}?`,
+            `How many vectors are in ${largestCollection.name}?`,
+            `List all artists in ${largestCollection.name}`,
+            `Describe the ${largestCollection.name} collection`,
+          ];
+        }
+      } else {
+        // Fallback if no collections have data
+        const firstCollection = collectionsData[0]?.name || "your_collection";
+        collectionExamples = [
+          `How many artists in ${firstCollection}?`,
+          `How many vectors are in ${firstCollection}?`,
+          `List all artists in ${firstCollection}`,
+          `Describe the ${firstCollection} collection`,
+        ];
+      }
+
+      setDemoExamples({
+        database: databaseExamples.slice(0, 4),
+        collection: collectionExamples.slice(0, 4),
+      });
+    } catch (error) {
+      console.error("Failed to generate dynamic examples:", error);
+      // Keep default examples if generation fails
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
-      content: input.trim(),
+      content: inputValue,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    setInputValue("");
     setIsLoading(true);
 
     try {
-      const request: NaturalQueryRequest = {
-        question: input.trim(),
-        provider,
-        ...(collection.trim() && { collection: collection.trim() }),
-      };
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: selectedCollection || undefined,
+          question: inputValue,
+          model: selectedModel,
+        }),
+      });
 
-      const response = await askQuestion(request);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: "assistant",
-        content: response.answer,
+        content: data.answer,
         timestamp: new Date(),
-        queryType: response.query_type,
-        executionTime: response.execution_time_ms,
-        data: response.data,
+        queryType: data.query_type,
+        executionTime: data.execution_time_ms,
+        data: data.data,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      console.error("Error sending message:", error);
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: "assistant",
-        content: `Sorry, I encountered an error: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        content: "Sorry, I encountered an error processing your request.",
         timestamp: new Date(),
       };
-
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const formatData = (data: unknown) => {
+  const handleExampleClick = (example: string) => {
+    setInputValue(example);
+  };
+
+  const formatData = (data: any, queryType: string) => {
     if (!data) return null;
 
-    if (typeof data === "object" && data !== null) {
-      const obj = data as Record<string, unknown>;
-
-      if ("total_collections" in obj) {
-        return (
-          <div className="mt-2 p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">Database Overview</span>
+    // Handle different data types with consistent formatting
+    if (queryType === "collections" && data.collections) {
+      return (
+        <div className="mt-2 space-y-1">
+          <div className="text-sm font-medium text-gray-300">
+            Collections Found:
+          </div>
+          {data.collections.map((collection: any, index: number) => (
+            <div
+              key={index}
+              className="text-sm bg-gray-800 rounded px-2 py-1 border border-gray-700"
+            >
+              <span className="font-medium text-white">{collection.name}</span>
+              {collection.vectors_count !== undefined && (
+                <span className="text-gray-400 ml-2">
+                  ({collection.vectors_count.toLocaleString()} vectors)
+                </span>
+              )}
             </div>
-            <div className="text-sm space-y-1">
-              <div>
-                Collections:{" "}
-                <span className="font-mono">
-                  {String(obj.total_collections)}
+          ))}
+        </div>
+      );
+    }
+
+    if (queryType === "database" && data.collections) {
+      return (
+        <div className="mt-2 space-y-2">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="text-gray-300">
+              Total Collections:{" "}
+              <span className="font-medium text-white">
+                {data.total_collections}
+              </span>
+            </div>
+            <div className="text-gray-300">
+              Total Vectors:{" "}
+              <span className="font-medium text-white">
+                {data.total_vectors?.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      (queryType === "count" || queryType === "describe") &&
+      data.count !== undefined
+    ) {
+      return (
+        <div className="mt-2 text-sm">
+          <Badge variant="secondary" className="bg-gray-700 text-gray-200">
+            {data.count.toLocaleString()} items
+          </Badge>
+          {data.artist && (
+            <div className="mt-1 text-gray-300">
+              Artist:{" "}
+              <span className="text-white font-medium">{data.artist}</span>
+            </div>
+          )}
+          {data.by_collection && data.by_collection.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <div className="text-xs text-gray-400">Found in collections:</div>
+              {data.by_collection.map((col: any, index: number) => (
+                <div
+                  key={index}
+                  className="text-xs bg-gray-800 rounded px-2 py-1 border border-gray-700"
+                >
+                  <span className="text-white">{col.collection}</span>:{" "}
+                  <span className="text-gray-300">{col.count} images</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {data.artists && data.artists.length > 0 && (
+            <div className="mt-1 text-gray-300">
+              Artists: {data.artists.slice(0, 5).join(", ")}
+              {data.artists.length > 5 && "..."}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (queryType === "summarize") {
+      return (
+        <div className="mt-2 space-y-2">
+          <div className="text-sm font-medium text-gray-300">
+            Summary of {data.artist}'s Work:
+          </div>
+          <div className="bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="text-gray-300">
+                Total Images:{" "}
+                <span className="text-white font-medium">
+                  {data.total_images || 0}
                 </span>
               </div>
-              <div>
-                Total Vectors:{" "}
-                <span className="font-mono">{String(obj.total_vectors)}</span>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      if ("collections" in obj && Array.isArray(obj.collections)) {
-        return (
-          <div className="mt-2 p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">Collections</span>
-            </div>
-            <div className="text-sm space-y-1">
-              {(
-                obj.collections as Array<{
-                  name: string;
-                  vectors_count?: number;
-                }>
-              )
-                .slice(0, 5)
-                .map((col, i) => (
-                  <div key={i}>
-                    {col.name}{" "}
-                    {col.vectors_count !== undefined &&
-                      `(${col.vectors_count} vectors)`}
-                  </div>
-                ))}
-              {(
-                obj.collections as Array<{
-                  name: string;
-                  vectors_count?: number;
-                }>
-              ).length > 5 && (
-                <div className="text-muted-foreground">
-                  ...and{" "}
-                  {(
-                    obj.collections as Array<{
-                      name: string;
-                      vectors_count?: number;
-                    }>
-                  ).length - 5}{" "}
-                  more
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      }
-
-      if ("total_count" in obj && "results_by_collection" in obj) {
-        return (
-          <div className="mt-2 p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">Cross-Collection Search</span>
-            </div>
-            <div className="text-sm space-y-1">
-              <div>
-                Total Results:{" "}
-                <span className="font-mono">{String(obj.total_count)}</span>
-              </div>
-              <div>
-                Collections Searched:{" "}
-                <span className="font-mono">
-                  {String(obj.collections_searched)}
+              <div className="text-gray-300">
+                Displayed:{" "}
+                <span className="text-white font-medium">
+                  {data.displayed_images || 0}
                 </span>
               </div>
             </div>
-          </div>
-        );
-      }
-
-      if ("count" in obj && typeof obj.count === "number") {
-        return (
-          <div className="mt-2 p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">Query Results</span>
-            </div>
-            <div className="text-sm space-y-1">
-              <div>
-                Count: <span className="font-mono">{String(obj.count)}</span>
+            {data.collections_found && (
+              <div className="text-xs text-gray-300">
+                Found in:{" "}
+                <span className="text-white">
+                  {data.collections_found} collections
+                </span>
               </div>
-              {obj.artists && Array.isArray(obj.artists) && (
-                <div>
-                  Sample: {(obj.artists as string[]).slice(0, 3).join(", ")}
-                  {(obj.artists as string[]).length > 3 && "..."}
+            )}
+            {data.file_types && data.file_types.length > 0 && (
+              <div className="text-xs text-gray-300">
+                File Types:{" "}
+                <span className="text-white">{data.file_types.join(", ")}</span>
+              </div>
+            )}
+            {data.sample_images && data.sample_images.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-gray-300">
+                  Sample Images:
                 </div>
-              )}
-            </div>
+                {data.sample_images
+                  .slice(0, 3)
+                  .map((img: any, index: number) => (
+                    <div
+                      key={index}
+                      className="text-xs bg-gray-900 rounded px-2 py-1 border border-gray-600"
+                    >
+                      <span className="text-blue-300">{img.filename}</span>
+                      {img.collection && (
+                        <span className="text-gray-400 ml-1">
+                          ({img.collection})
+                        </span>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
-        );
-      }
+        </div>
+      );
+    }
 
-      if ("by_collection" in obj && Array.isArray(obj.by_collection)) {
-        return (
-          <div className="mt-2 p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">Vector Count by Collection</span>
+    if (queryType === "analyze") {
+      return (
+        <div className="mt-2 space-y-2">
+          <div className="text-sm font-medium text-gray-300">
+            Analysis of {data.artist}'s Work:
+          </div>
+          <div className="bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+            <div className="text-xs">
+              <span className="text-gray-300">Total Images: </span>
+              <span className="text-white font-medium">
+                {data.total_images || 0}
+              </span>
             </div>
-            <div className="text-sm space-y-1">
-              <div>
-                Total: <span className="font-mono">{String(obj.count)}</span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-2">
-                Breakdown:
-              </div>
-              {(obj.by_collection as Array<{ name: string; count: number }>)
-                .slice(0, 5)
-                .map((col, i) => (
-                  <div key={i} className="text-xs ml-2">
-                    {col.name}: {col.count} vectors
+            {data.file_type_distribution &&
+              Object.keys(data.file_type_distribution).length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-gray-300">
+                    File Types:
                   </div>
-                ))}
-              {(obj.by_collection as Array<{ name: string; count: number }>)
-                .length > 5 && (
-                <div className="text-xs text-muted-foreground ml-2">
-                  ...and{" "}
-                  {(obj.by_collection as Array<{ name: string; count: number }>)
-                    .length - 5}{" "}
-                  more
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(data.file_type_distribution).map(
+                      ([type, count]: [string, any]) => (
+                        <span
+                          key={type}
+                          className="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-700/50"
+                        >
+                          {type}: {count}
+                        </span>
+                      )
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
+            {data.common_naming_patterns &&
+              Object.keys(data.common_naming_patterns).length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-gray-300">
+                    Common Patterns:
+                  </div>
+                  {Object.entries(data.common_naming_patterns)
+                    .slice(0, 3)
+                    .map(([pattern, count]: [string, any]) => (
+                      <div key={pattern} className="text-xs text-gray-300">
+                        <code className="bg-gray-900 px-1 rounded text-green-300">
+                          "{pattern}"
+                        </code>{" "}
+                        - {count} files
+                      </div>
+                    ))}
+                </div>
+              )}
           </div>
-        );
-      }
+        </div>
+      );
+    }
+
+    if (queryType === "search" && data.results_by_collection) {
+      return (
+        <div className="mt-2 space-y-2">
+          <div className="text-sm font-medium text-gray-300">
+            Search Results ({data.total_count} total):
+          </div>
+          {data.results_by_collection
+            .slice(0, 3)
+            .map((result: any, index: number) => (
+              <div
+                key={index}
+                className="text-sm bg-gray-800 rounded px-2 py-1 border border-gray-700"
+              >
+                <span className="font-medium text-white">
+                  {result.collection}
+                </span>
+                : <span className="text-gray-300">{result.count} matches</span>
+              </div>
+            ))}
+        </div>
+      );
     }
 
     return null;
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
-      {/* Header */}
-      <Card className="mb-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            Natural Language Database Interface
-          </CardTitle>
-          <div className="flex flex-wrap gap-2 mt-2">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Collection:</label>
-              <Input
-                value={collection}
-                onChange={(e) => setCollection(e.target.value)}
-                className="w-48 h-8"
-                placeholder="Optional (leave empty for database queries)"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Provider:</label>
-              <select
-                value={provider}
-                onChange={(e) =>
-                  setProvider(e.target.value as "openai" | "gemini")
-                }
-                className="h-8 px-3 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-              </select>
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground mt-2">
-            Leave collection empty to ask database-level questions like "What
-            collections exist?" or "How many collections are there?"
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Messages */}
-      <Card className="flex-1 flex flex-col">
-        <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && (
-            <div className="text-center text-muted-foreground py-8">
-              <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-medium mb-2">
-                Ask me anything about your vector database!
-              </h3>
-              <div className="text-sm space-y-1">
-                <p>
-                  <strong>Database queries:</strong> "What collections exist?",
-                  "How many collections?"
-                </p>
-                <p>
-                  <strong>Collection queries:</strong> "How many artists?",
-                  "Find images by Chris Dyer"
-                </p>
-                <p>
-                  <strong>Cross-collection:</strong> "Find Chris Dyer images
-                  across all collections"
-                </p>
-              </div>
-            </div>
-          )}
-
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${
-                message.type === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`flex gap-3 max-w-[80%] ${
-                  message.type === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
-              >
-                <div
-                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.type === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
+    <div className="bg-black min-h-screen text-white">
+      <div className="flex flex-col lg:flex-row gap-4 h-screen max-w-7xl mx-auto p-3">
+        {/* Model Selection Panel */}
+        <div className="w-full lg:w-72 space-y-3 overflow-y-auto max-h-screen">
+          <Card className="bg-gray-900 border-gray-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                <Bot className="w-4 h-4" />
+                Query Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block text-gray-300">
+                  AI Model
+                </label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value as ModelKey)}
+                  className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
                 >
-                  {message.type === "user" ? (
-                    <User className="h-4 w-4" />
-                  ) : (
-                    <Bot className="h-4 w-4" />
-                  )}
-                </div>
+                  <optgroup label="OpenAI Models">
+                    {Object.entries(AVAILABLE_MODELS)
+                      .filter(([_, info]) => info.provider === "openai")
+                      .map(([key, info]) => (
+                        <option key={key} value={key}>
+                          {info.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="Gemini Models">
+                    {Object.entries(AVAILABLE_MODELS)
+                      .filter(([_, info]) => info.provider === "gemini")
+                      .map(([key, info]) => (
+                        <option key={key} value={key}>
+                          {info.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
 
-                <div
-                  className={`rounded-lg p-3 ${
-                    message.type === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
+              <div>
+                <label className="text-xs font-medium mb-1 block text-gray-300">
+                  Collection (Optional)
+                </label>
+                <select
+                  value={selectedCollection}
+                  onChange={(e) => setSelectedCollection(e.target.value)}
+                  className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
                 >
-                  <div className="text-sm">{message.content}</div>
+                  <option value="">Database-level query</option>
+                  {collections.map((collection) => (
+                    <option key={collection} value={collection}>
+                      {collection}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </CardContent>
+          </Card>
 
-                  {message.type === "assistant" && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {message.queryType && (
-                        <Badge variant="secondary" className="text-xs">
-                          {message.queryType}
-                        </Badge>
-                      )}
-                      {message.executionTime && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs flex items-center gap-1"
-                        >
-                          <Clock className="h-3 w-3" />
-                          {message.executionTime}ms
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-
-                  {message.type === "assistant" && formatData(message.data)}
+          <Card className="bg-gray-900 border-gray-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                <Database className="w-4 h-4" />
+                Example Queries
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <div className="text-xs font-medium mb-1 text-gray-300">
+                  Database-level:
+                </div>
+                <div className="space-y-1">
+                  {demoExamples.database.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExampleClick(example)}
+                      className="text-xs text-left w-full p-2 bg-blue-900/30 hover:bg-blue-800/40 rounded border border-blue-700/50 text-blue-300 transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          ))}
 
-          {isLoading && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex gap-3 max-w-[80%]">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
-                  <Bot className="h-4 w-4" />
+              <div>
+                <div className="text-xs font-medium mb-1 text-gray-300">
+                  Collection-specific:
                 </div>
-                <div className="rounded-lg p-3 bg-muted">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                    <span className="text-sm">Thinking...</span>
-                  </div>
+                <div className="space-y-1">
+                  {demoExamples.collection.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExampleClick(example)}
+                      className="text-xs text-left w-full p-2 bg-green-900/30 hover:bg-green-800/40 rounded border border-green-700/50 text-green-300 transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </CardContent>
-
-        {/* Input */}
-        <div className="border-t p-4">
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question about your vector database..."
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={isLoading || !input.trim()}>
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
+            </CardContent>
+          </Card>
         </div>
-      </Card>
+
+        {/* Chat Interface */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <Card className="flex-1 flex flex-col bg-gray-900 border-gray-700 overflow-hidden">
+            <CardHeader className="pb-3 border-b border-gray-700">
+              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                <Search className="w-4 h-4" />
+                Vector Database Chat
+                <Badge
+                  variant="outline"
+                  className="ml-auto text-xs border-gray-600 text-gray-300"
+                >
+                  {AVAILABLE_MODELS[selectedModel].name}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
+              {/* Fixed height scrollable chat area */}
+              <div
+                ref={scrollAreaRef}
+                className="flex-1 overflow-y-auto px-4 py-3"
+                style={{ maxHeight: "calc(100vh - 200px)" }}
+              >
+                {messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="text-center">
+                      <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">
+                        Ask me anything about your vector database!
+                      </p>
+                      <p className="text-xs mt-1 text-gray-500">
+                        Try the example queries on the left to get started.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex gap-2 ${
+                          message.type === "user"
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`flex gap-2 max-w-[85%] ${
+                            message.type === "user"
+                              ? "flex-row-reverse"
+                              : "flex-row"
+                          }`}
+                        >
+                          <div
+                            className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                              message.type === "user"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-700 text-gray-300"
+                            }`}
+                          >
+                            {message.type === "user" ? (
+                              <User className="w-3 h-3" />
+                            ) : (
+                              <Bot className="w-3 h-3" />
+                            )}
+                          </div>
+                          <div
+                            className={`rounded-lg p-2 text-sm ${
+                              message.type === "user"
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-800 text-gray-100 border border-gray-700"
+                            }`}
+                          >
+                            <div>{message.content}</div>
+
+                            {message.type === "assistant" && message.data && (
+                              <div>
+                                {formatData(
+                                  message.data,
+                                  message.queryType || ""
+                                )}
+                              </div>
+                            )}
+
+                            {message.type === "assistant" &&
+                              message.executionTime && (
+                                <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{message.executionTime}ms</span>
+                                  {message.queryType && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-1 text-xs bg-gray-700 text-gray-300"
+                                    >
+                                      {message.queryType}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {isLoading && (
+                      <div className="flex justify-start">
+                        <div className="flex gap-2">
+                          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 text-gray-300 flex items-center justify-center">
+                            <Bot className="w-3 h-3" />
+                          </div>
+                          <div className="bg-gray-800 rounded-lg p-2 border border-gray-700">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                              <div
+                                className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                                style={{ animationDelay: "0.1s" }}
+                              ></div>
+                              <div
+                                className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                                style={{ animationDelay: "0.2s" }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Input area */}
+              <div className="border-t border-gray-700 bg-gray-900 p-3">
+                <form onSubmit={handleSubmit} className="flex gap-2">
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Ask about your vector database..."
+                    disabled={isLoading}
+                    className="flex-1 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isLoading || !inputValue.trim()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </form>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

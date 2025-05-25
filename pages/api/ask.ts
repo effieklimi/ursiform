@@ -1,6 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { processNaturalQuery } from "../../lib/qdrant/nlp-query";
-import { NaturalQueryRequest, NaturalQueryResponse } from "../../lib/types";
+import {
+  NaturalQueryRequest,
+  NaturalQueryResponse,
+  AVAILABLE_MODELS,
+} from "../../lib/types";
 
 export default async function handler(
   req: NextApiRequest,
@@ -23,7 +27,7 @@ export default async function handler(
   }
 
   try {
-    const { collection, question, provider } = req.body as NaturalQueryRequest;
+    const { collection, question, model } = req.body as NaturalQueryRequest;
 
     if (!question) {
       res.status(400).json({
@@ -32,16 +36,23 @@ export default async function handler(
       return;
     }
 
+    // Determine provider from model, default to gemini-2.0-flash
+    const selectedModel = model || "gemini-2.0-flash";
+    const modelInfo =
+      AVAILABLE_MODELS[selectedModel as keyof typeof AVAILABLE_MODELS];
+    const provider = modelInfo?.provider || "gemini";
+
     console.log(
       `Processing natural language query: "${question}" for collection: ${
         collection || "database-level"
-      }`
+      } using model: ${selectedModel}`
     );
 
     const result = await processNaturalQuery(
       collection || null, // Allow null for database-level queries
       question,
-      provider || "openai"
+      provider,
+      selectedModel // Pass the specific model
     );
 
     // Transform the result to match NaturalQueryResponse interface

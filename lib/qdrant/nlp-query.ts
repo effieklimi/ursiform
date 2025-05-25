@@ -17,7 +17,9 @@ interface QueryIntent {
     | "filter"
     | "describe"
     | "collections"
-    | "database";
+    | "database"
+    | "summarize"
+    | "analyze";
   target: string; // what to count/search/list
   filter?: any; // any filters to apply
   limit?: number;
@@ -28,7 +30,8 @@ interface QueryIntent {
 export async function processNaturalQuery(
   collection: string | null, // Make collection optional
   question: string,
-  provider: EmbeddingProvider = "openai"
+  provider: EmbeddingProvider = "openai",
+  model?: string // Add specific model parameter
 ): Promise<{
   answer: string;
   query_type: string;
@@ -39,7 +42,7 @@ export async function processNaturalQuery(
 
   try {
     // Step 1: Understand the intent using LLM
-    const intent = await parseQueryIntent(question, provider);
+    const intent = await parseQueryIntent(question, provider, model);
 
     // Step 2: Use extracted collection name if available and no explicit collection provided
     const finalCollection = collection || intent.extractedCollection || null;
@@ -48,7 +51,13 @@ export async function processNaturalQuery(
     const result = await executeQuery(finalCollection, intent);
 
     // Step 4: Generate natural language response
-    const answer = await generateResponse(question, intent, result, provider);
+    const answer = await generateResponse(
+      question,
+      intent,
+      result,
+      provider,
+      model
+    );
 
     const execution_time_ms = Date.now() - startTime;
 
@@ -79,7 +88,8 @@ export async function processNaturalQuery(
 
 async function parseQueryIntent(
   question: string,
-  provider: EmbeddingProvider
+  provider: EmbeddingProvider,
+  model?: string
 ): Promise<QueryIntent> {
   // First try simple pattern matching as fallback
   const fallbackIntent = inferIntentFromQuestion(question);
@@ -90,7 +100,7 @@ async function parseQueryIntent(
     return fallbackIntent;
   }
 
-  const systemPrompt = `You are a query analyzer for a vector database system. Parse the user's question and return a JSON object with the query intent.
+  const systemPrompt = `You are an expert query analyzer for a vector database system containing image data with artist information. Parse the user's question and return a JSON object with the query intent.
 
 The system contains multiple collections, each with image data with these fields:
 - name (artist name)
@@ -99,22 +109,29 @@ The system contains multiple collections, each with image data with these fields
 - url (style URL)
 
 Available query types:
-- "count": count items (e.g., "how many artists", "count images")
-- "search": find specific items (e.g., "find Chris Dyer images")
+- "count": count items (e.g., "how many images by Chris Dyer")
+- "search": find specific items (e.g., "find Chris Dyer images", "show me artwork by specific artist")
 - "list": list unique values (e.g., "list all artists")
 - "filter": filter by criteria (e.g., "images with .jpeg extension")
 - "describe": get general info (e.g., "describe this collection")
-- "collections": collection management (e.g., "what collections exist", "list collections")
-- "database": database-level queries (e.g., "describe the database", "how many collections")
+- "summarize": provide detailed summary of specific subset (e.g., "summarize Chris Dyer's images")
+- "analyze": analyze or categorize specific artist's work
+- "collections": collection management (e.g., "what collections exist")
+- "database": database-level queries (e.g., "describe the database")
 
 Available scopes:
 - "collection": query operates on a specific collection
 - "database": query operates on the entire database
 
+IMPORTANT: If the user asks about a specific artist's work, images, or style:
+1. Set type to "search" or "summarize" (not just "describe")
+2. Extract the artist name in the filter
+3. Be specific about what they want to know
+
 Return ONLY a JSON object in this format:
 {
-  "type": "count|search|list|filter|describe|collections|database",
-  "target": "what to count/search/list (e.g., 'artists', 'images', 'collections')",
+  "type": "count|search|list|filter|describe|summarize|analyze|collections|database",
+  "target": "what to count/search/list (e.g., 'images', 'artists', 'collections')",
   "filter": {"field": "value"} or null,
   "limit": number or null,
   "scope": "collection|database",
@@ -122,29 +139,27 @@ Return ONLY a JSON object in this format:
 }
 
 Examples:
-- "How many artists?" → {"type": "count", "target": "artists", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
-- "How many artists in midjourneysample?" → {"type": "count", "target": "artists", "filter": null, "limit": null, "scope": "collection", "extractedCollection": "midjourneysample"}
-- "What collections exist?" → {"type": "collections", "target": "list", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
-- "How many collections are there?" → {"type": "count", "target": "collections", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
-- "Describe the database" → {"type": "database", "target": "overview", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
-- "Find Chris Dyer images across all collections" → {"type": "search", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "database", "extractedCollection": null}
-- "How many vectors in test_collection?" → {"type": "count", "target": "total", "filter": null, "limit": null, "scope": "collection", "extractedCollection": "test_collection"}`;
+- "How many images by Chris Dyer?" → {"type": "count", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": null, "scope": "database", "extractedCollection": null}
+- "Summarize Chris Dyer's images in midjourneysample" → {"type": "summarize", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "collection", "extractedCollection": "midjourneysample"}
+- "Give me a summary of the images by Chris Dyer" → {"type": "summarize", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "database", "extractedCollection": null}
+- "Find all Chris Dyer artwork" → {"type": "search", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 20, "scope": "database", "extractedCollection": null}
+- "Show me Peter Paul Rubens images in midjourneysample" → {"type": "search", "target": "images", "filter": {"name": "Peter Paul Rubens"}, "limit": 10, "scope": "collection", "extractedCollection": "midjourneysample"}`;
 
   try {
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash", // Use stable Gemini 2.0 Flash model
+      const geminiModel = genAI.getGenerativeModel({
+        model: model || "gemini-2.0-flash", // Use specific model parameter
       });
-      const result = await model.generateContent([
+      const result = await geminiModel.generateContent([
         { text: systemPrompt },
         { text: `Question: "${question}"` },
       ]);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: model || "gpt-3.5-turbo", // Use specific model parameter
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Question: "${question}"` },
@@ -173,6 +188,16 @@ function inferIntentFromQuestion(question: string): QueryIntent {
   // Try to extract collection name from the question
   const extractedCollection = extractCollectionFromQuestion(question);
 
+  // Check for artist-specific queries first - fixed regex with lookahead
+  const artistMatch =
+    question.match(
+      /artist\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+    ) ||
+    question.match(
+      /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+    );
+  const artistName = artistMatch ? artistMatch[1].trim() : null;
+
   // Database-level queries
   if (q.includes("collections") || q.includes("database")) {
     if (q.includes("how many") || q.includes("count")) {
@@ -183,6 +208,59 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     }
     if (q.includes("describe")) {
       return { type: "database", target: "overview", scope: "database" };
+    }
+  }
+
+  // Artist-specific queries (high priority)
+  if (artistName) {
+    const filter = { name: artistName };
+    const scope = extractedCollection ? "collection" : "database";
+
+    if (
+      q.includes("summary") ||
+      q.includes("summarize") ||
+      (q.includes("give me") && q.includes("summary"))
+    ) {
+      return {
+        type: "summarize",
+        target: "images",
+        filter,
+        limit: 20,
+        scope,
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+
+    if (q.includes("how many") || q.includes("count")) {
+      return {
+        type: "count",
+        target: "images",
+        filter,
+        scope,
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+
+    if (q.includes("find") || q.includes("search") || q.includes("show")) {
+      return {
+        type: "search",
+        target: "images",
+        filter,
+        limit: 10,
+        scope,
+        ...(extractedCollection && { extractedCollection }),
+      };
+    }
+
+    if (q.includes("analyze") || q.includes("analysis")) {
+      return {
+        type: "analyze",
+        target: "images",
+        filter,
+        limit: 50,
+        scope,
+        ...(extractedCollection && { extractedCollection }),
+      };
     }
   }
 
@@ -221,15 +299,15 @@ function inferIntentFromQuestion(question: string): QueryIntent {
         ? "collection"
         : "database";
 
-    // Try to extract artist name
-    const artistMatch = question.match(
-      /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/i
+    // Try to extract artist name (fallback pattern) - fixed with lookahead
+    const fallbackArtistMatch = question.match(
+      /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
     );
-    if (artistMatch) {
+    if (fallbackArtistMatch) {
       return {
         type: "search",
         target: "images",
-        filter: { name: artistMatch[1] },
+        filter: { name: fallbackArtistMatch[1] },
         limit: 10,
         scope,
         ...(extractedCollection && { extractedCollection }),
@@ -364,6 +442,9 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
       if (intent.target === "artists") {
         return await countArtistsAcrossDatabase();
       }
+      if (intent.target === "images" && intent.filter) {
+        return await countImagesByArtistAcrossDatabase(intent.filter);
+      }
       if (intent.target === "total") {
         return await countTotalVectorsAcrossDatabase();
       }
@@ -378,6 +459,15 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
     case "search":
       if (intent.filter) {
         return await searchAcrossCollections(intent.filter, intent.limit || 10);
+      }
+      break;
+
+    case "summarize":
+      if (intent.filter) {
+        return await summarizeArtistAcrossDatabase(
+          intent.filter,
+          intent.limit || 20
+        );
       }
       break;
 
@@ -402,12 +492,28 @@ async function executeCollectionQuery(
     case "count":
       if (intent.target === "artists") {
         return await countUniqueArtists(collection);
+      } else if (intent.target === "images" && intent.filter) {
+        return await countImagesByArtist(collection, intent.filter);
       } else {
         return await countTotal(collection);
       }
 
     case "search":
       return await searchImages(collection, intent.filter, intent.limit || 10);
+
+    case "summarize":
+      return await summarizeArtistWork(
+        collection,
+        intent.filter,
+        intent.limit || 20
+      );
+
+    case "analyze":
+      return await analyzeArtistWork(
+        collection,
+        intent.filter,
+        intent.limit || 50
+      );
 
     case "list":
       if (intent.target === "artists") {
@@ -632,7 +738,8 @@ async function generateResponse(
   question: string,
   intent: QueryIntent,
   data: any,
-  provider: EmbeddingProvider
+  provider: EmbeddingProvider,
+  model?: string
 ): Promise<string> {
   const fallbackResponse = generateFallbackResponse(question, intent, data);
 
@@ -653,14 +760,14 @@ Provide a concise, natural language response that directly answers the user's qu
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash", // Use stable Gemini 2.0 Flash model
+      const geminiModel = genAI.getGenerativeModel({
+        model: model || "gemini-2.0-flash", // Use specific model parameter
       });
-      const result = await model.generateContent(systemPrompt);
+      const result = await geminiModel.generateContent(systemPrompt);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: model || "gpt-3.5-turbo", // Use specific model parameter
         messages: [{ role: "system", content: systemPrompt }],
         temperature: 0.3,
         max_tokens: 200,
@@ -697,6 +804,17 @@ function generateFallbackResponse(
             data.artists?.slice(0, 5).join(", ") || "No artists found"
           }.`;
         }
+        if (intent.target === "images" && intent.filter?.name) {
+          return `I found ${data.count || 0} images by ${
+            data.artist
+          } across all collections. ${
+            data.by_collection?.length > 0
+              ? `Found in: ${data.by_collection
+                  .map((c: any) => `${c.collection} (${c.count})`)
+                  .join(", ")}.`
+              : ""
+          }`;
+        }
         if (intent.target === "total") {
           return `The database contains ${
             data.count || 0
@@ -719,6 +837,31 @@ function generateFallbackResponse(
         return `I searched across ${
           data.collections_searched || 0
         } collections and found ${data.total_count || 0} matching items.`;
+      case "summarize":
+        if (intent.filter?.name) {
+          return (
+            `**Summary of ${data.artist}'s work across the database:**\n\n` +
+            `• **Total Images**: ${data.total_images || 0}\n` +
+            `• **Collections**: Found in ${
+              data.collections_found || 0
+            } collections\n` +
+            `• **File Types**: ${
+              data.file_types?.join(", ") || "Various"
+            }\n\n` +
+            `**Breakdown by collection:**\n${
+              data.by_collection
+                ?.map((c: any) => `• ${c.collection}: ${c.image_count} images`)
+                .join("\n") || "No collections found"
+            }\n\n` +
+            `**Sample Images**: ${
+              data.sample_images
+                ?.slice(0, 3)
+                .map((img: any) => `${img.filename} (${img.collection})`)
+                .join(", ") || "None found"
+            }`
+          );
+        }
+        break;
       case "list":
         if (intent.target === "artists") {
           return `I found ${
@@ -731,7 +874,7 @@ function generateFallbackResponse(
     }
   }
 
-  // Collection-level responses (existing logic)
+  // Collection-level responses
   switch (intent.type) {
     case "count":
       if (intent.target === "artists") {
@@ -740,6 +883,17 @@ function generateFallbackResponse(
         } unique artists in the collection. Some of them include: ${
           data.artists?.slice(0, 5).join(", ") || "No artists found"
         }.`;
+      } else if (intent.target === "images" && intent.filter?.name) {
+        return `I found ${data.count || 0} images by ${
+          data.artist
+        } in this collection.${
+          data.sample_images?.length > 0
+            ? ` Sample files: ${data.sample_images
+                .slice(0, 3)
+                .map((img: any) => img.filename)
+                .join(", ")}.`
+            : ""
+        }`;
       } else {
         return `The collection contains ${data.count || 0} total images.`;
       }
@@ -747,6 +901,51 @@ function generateFallbackResponse(
     case "search":
     case "filter":
       return `I found ${data.count || 0} images matching your criteria.`;
+
+    case "summarize":
+      if (intent.filter?.name) {
+        return (
+          `**Summary of ${data.artist}'s work in this collection:**\n\n` +
+          `• **Total Images**: ${data.total_images || 0}\n` +
+          `• **File Types**: ${data.file_types?.join(", ") || "Various"}\n` +
+          `• **Sample Files**: ${
+            data.sample_filenames?.slice(0, 5).join(", ") || "None"
+          }\n\n` +
+          `**Image Details:**\n${
+            data.images
+              ?.slice(0, 5)
+              .map(
+                (img: any, i: number) =>
+                  `${i + 1}. ${img.filename || "Unknown file"}`
+              )
+              .join("\n") || "No images found"
+          }`
+        );
+      }
+      break;
+
+    case "analyze":
+      if (intent.filter?.name) {
+        return (
+          `**Analysis of ${data.artist}'s work patterns:**\n\n` +
+          `• **Total Images**: ${data.total_images || 0}\n` +
+          `• **File Types**: ${
+            Object.entries(data.file_type_distribution || {})
+              .map(([type, count]) => `${type} (${count})`)
+              .join(", ") || "Various"
+          }\n` +
+          `• **Common Patterns**: ${
+            Object.entries(data.common_naming_patterns || {})
+              .slice(0, 3)
+              .map(([pattern, count]) => `"${pattern}" (${count} files)`)
+              .join(", ") || "No patterns found"
+          }\n` +
+          `• **Source Domains**: ${
+            Object.keys(data.source_domains || {}).join(", ") || "Various"
+          }`
+        );
+      }
+      break;
 
     case "list":
       if (intent.target === "artists") {
@@ -767,6 +966,8 @@ function generateFallbackResponse(
     default:
       return "I processed your query successfully using pattern matching.";
   }
+
+  return "I processed your query successfully.";
 }
 
 // New database-level functions for artists and total counts
@@ -850,5 +1051,256 @@ async function listArtistsAcrossDatabase(limit: number): Promise<{
   return {
     artists: Array.from(allArtists).slice(0, limit),
     by_collection: byCollection,
+  };
+}
+
+// New function to count images by specific artist
+async function countImagesByArtist(
+  collection: string,
+  filter: any
+): Promise<{ count: number; artist: string; sample_images: any[] }> {
+  const response = await client.scroll(collection, {
+    limit: 1000,
+    with_payload: true,
+    with_vector: false,
+  });
+
+  let filteredPoints = response.points;
+  if (filter) {
+    filteredPoints = response.points.filter((point: any) => {
+      return Object.entries(filter).every(([key, value]) => {
+        return point.payload?.[key] === value;
+      });
+    });
+  }
+
+  return {
+    count: filteredPoints.length,
+    artist: filter?.name || "unknown",
+    sample_images: filteredPoints.slice(0, 5).map((point: any) => ({
+      id: point.id,
+      filename: point.payload?.file_name,
+      url: point.payload?.image_url,
+    })),
+  };
+}
+
+// New function to provide detailed summary of artist's work
+async function summarizeArtistWork(
+  collection: string,
+  filter: any,
+  limit: number
+): Promise<any> {
+  const response = await client.scroll(collection, {
+    limit: 1000,
+    with_payload: true,
+    with_vector: false,
+  });
+
+  let filteredPoints = response.points;
+  if (filter) {
+    filteredPoints = response.points.filter((point: any) => {
+      return Object.entries(filter).every(([key, value]) => {
+        return point.payload?.[key] === value;
+      });
+    });
+  }
+
+  const limitedPoints = filteredPoints.slice(0, limit);
+
+  // Analyze file types and patterns
+  const fileExtensions = new Set<string>();
+  const fileNames: string[] = [];
+  const imageUrls: string[] = [];
+
+  limitedPoints.forEach((point: any) => {
+    if (point.payload?.file_name) {
+      const ext = point.payload.file_name.split(".").pop()?.toLowerCase();
+      if (ext) fileExtensions.add(ext);
+      fileNames.push(point.payload.file_name);
+    }
+    if (point.payload?.image_url) {
+      imageUrls.push(point.payload.image_url);
+    }
+  });
+
+  return {
+    artist: filter?.name || "unknown",
+    total_images: filteredPoints.length,
+    displayed_images: limitedPoints.length,
+    file_types: Array.from(fileExtensions),
+    sample_filenames: fileNames.slice(0, 8),
+    sample_urls: imageUrls.slice(0, 5),
+    images: limitedPoints.map((point: any) => ({
+      id: point.id,
+      filename: point.payload?.file_name,
+      image_url: point.payload?.image_url,
+      style_url: point.payload?.url,
+    })),
+  };
+}
+
+// New function to analyze artist's work patterns
+async function analyzeArtistWork(
+  collection: string,
+  filter: any,
+  limit: number
+): Promise<any> {
+  const response = await client.scroll(collection, {
+    limit: 1000,
+    with_payload: true,
+    with_vector: false,
+  });
+
+  let filteredPoints = response.points;
+  if (filter) {
+    filteredPoints = response.points.filter((point: any) => {
+      return Object.entries(filter).every(([key, value]) => {
+        return point.payload?.[key] === value;
+      });
+    });
+  }
+
+  // Analyze patterns in the artist's work
+  const fileTypes = new Map();
+  const namingPatterns = new Map();
+  const urlPatterns = new Map();
+
+  filteredPoints.forEach((point: any) => {
+    // File type analysis
+    if (point.payload?.file_name) {
+      const ext = point.payload.file_name.split(".").pop()?.toLowerCase();
+      if (ext) {
+        fileTypes.set(ext, (fileTypes.get(ext) || 0) + 1);
+      }
+
+      // Naming pattern analysis
+      const namePattern = point.payload.file_name
+        .replace(/\d+/g, "#")
+        .replace(/\.(jpg|jpeg|png|gif|webp)$/i, "");
+      namingPatterns.set(
+        namePattern,
+        (namingPatterns.get(namePattern) || 0) + 1
+      );
+    }
+
+    // URL pattern analysis
+    if (point.payload?.url) {
+      const domain = point.payload.url.split("/")[2];
+      if (domain) {
+        urlPatterns.set(domain, (urlPatterns.get(domain) || 0) + 1);
+      }
+    }
+  });
+
+  return {
+    artist: filter?.name || "unknown",
+    total_images: filteredPoints.length,
+    file_type_distribution: Object.fromEntries(fileTypes),
+    common_naming_patterns: Object.fromEntries(
+      Array.from(namingPatterns.entries())
+        .filter(([_, count]) => count > 1)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+    ),
+    source_domains: Object.fromEntries(urlPatterns),
+    sample_images: filteredPoints.slice(0, 10).map((point: any) => ({
+      id: point.id,
+      filename: point.payload?.file_name,
+      image_url: point.payload?.image_url,
+    })),
+  };
+}
+
+// New function to count specific artist images across all collections
+async function countImagesByArtistAcrossDatabase(filter: any): Promise<{
+  count: number;
+  artist: string;
+  by_collection: Array<{ collection: string; count: number }>;
+}> {
+  const collectionsData = await listCollections();
+  const resultsByCollection: Array<{ collection: string; count: number }> = [];
+  let totalCount = 0;
+
+  for (const collection of collectionsData.collections) {
+    try {
+      if (collection.vectors_count && collection.vectors_count > 0) {
+        const result = await countImagesByArtist(collection.name, filter);
+        if (result.count > 0) {
+          resultsByCollection.push({
+            collection: collection.name,
+            count: result.count,
+          });
+          totalCount += result.count;
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to count images in collection ${collection.name}:`,
+        error
+      );
+    }
+  }
+
+  return {
+    count: totalCount,
+    artist: filter?.name || "unknown",
+    by_collection: resultsByCollection,
+  };
+}
+
+// New function to summarize artist work across all collections
+async function summarizeArtistAcrossDatabase(
+  filter: any,
+  limit: number
+): Promise<any> {
+  const collectionsData = await listCollections();
+  const allImages: any[] = [];
+  const collectionSummaries: any[] = [];
+  const fileTypes = new Set<string>();
+
+  for (const collection of collectionsData.collections) {
+    try {
+      if (collection.vectors_count && collection.vectors_count > 0) {
+        const summary = await summarizeArtistWork(collection.name, filter, 50);
+        if (summary.total_images > 0) {
+          collectionSummaries.push({
+            collection: collection.name,
+            ...summary,
+          });
+          allImages.push(...summary.images);
+          summary.file_types?.forEach((type: string) => fileTypes.add(type));
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to summarize artist work in collection ${collection.name}:`,
+        error
+      );
+    }
+  }
+
+  const totalImages = allImages.length;
+  const displayedImages = allImages.slice(0, limit);
+
+  return {
+    artist: filter?.name || "unknown",
+    total_images: totalImages,
+    displayed_images: displayedImages.length,
+    collections_found: collectionSummaries.length,
+    file_types: Array.from(fileTypes),
+    by_collection: collectionSummaries.map((summary) => ({
+      collection: summary.collection,
+      image_count: summary.total_images,
+      sample_filenames: summary.sample_filenames?.slice(0, 3),
+    })),
+    sample_images: displayedImages.map((image: any) => ({
+      id: image.id,
+      filename: image.filename,
+      image_url: image.image_url,
+      collection: collectionSummaries.find((c) =>
+        c.images?.some((img: any) => img.id === image.id)
+      )?.collection,
+    })),
   };
 }
