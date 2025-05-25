@@ -27,12 +27,13 @@ export async function translateRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const { query, filters, k } = validationResult.data;
+        const { query, filters, k, provider } = validationResult.data;
 
         const results = await translateAndSearch({
           query,
           filters,
           k,
+          provider,
         });
 
         return reply.code(200).send(results);

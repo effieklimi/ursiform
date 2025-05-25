@@ -11,12 +11,15 @@ yearn/
 │   ├── schemas.ts               # Zod schemas & TypeScript types
 │   ├── qdrant/
 │   │   ├── db.ts               # Qdrant client initialization & collection management
-│   │   ├── embedder.ts         # OpenAI embeddings integration
-│   │   └── translator.ts       # Translation and semantic search logic
+│   │   ├── embedder.ts         # OpenAI & Gemini embeddings integration
+│   │   ├── translator.ts       # Translation and semantic search logic
+│   │   └── nlp-query.ts        # Natural language query processing
 │   └── routes/
 │       ├── collections.ts      # Collection management endpoints
 │       ├── vectors.ts          # Vector upsert endpoints
+│       ├── documents.ts        # Document ingestion endpoints
 │       ├── translate.ts        # Translation/search endpoints
+│       ├── nl-query.ts         # Natural language query endpoints
 │       └── health.ts           # Health check endpoint
 ├── tests/backend/
 │   ├── test_db.test.ts         # Database layer tests
@@ -37,7 +40,8 @@ yearn/
 
 - **Fastify + TypeScript**: High-performance web framework with type safety
 - **Qdrant Integration**: Vector database for similarity search (local or cloud)
-- **OpenAI Embeddings**: Text-to-vector transformation using `text-embedding-ada-002`
+- **Multiple Embedding Providers**: Support for OpenAI (`text-embedding-ada-002`) and Google Gemini (`embedding-001`)
+- **Natural Language Queries**: Ask questions in plain English about your collections 🆕
 - **RESTful API**: Clean endpoints for collection and vector management
 - **Semantic Search**: Translate natural language queries to vector searches
 - **Docker Support**: Containerized deployment with docker-compose
@@ -175,6 +179,7 @@ Response: `{"success":true}`
 Add a single document with automatic embedding generation:
 
 ```bash
+# Using OpenAI embeddings (default)
 curl -X POST http://localhost:8000/collections/my_collection/documents \
   -H "Content-Type: application/json" \
   -d '{
@@ -187,19 +192,31 @@ curl -X POST http://localhost:8000/collections/my_collection/documents \
         "author": "Jane Doe",
         "tags": ["machine learning", "AI", "algorithms"]
       }
-    }
+    },
+    "provider": "openai"
+  }'
+
+# Using Google Gemini embeddings
+curl -X POST http://localhost:8000/collections/my_collection/documents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document": {
+      "id": "doc-2",
+      "text": "Advanced neural network architectures for natural language processing.",
+      "metadata": {
+        "title": "NLP Guide",
+        "category": "research"
+      }
+    },
+    "provider": "gemini"
   }'
 ```
 
-Response:
+**Note**:
 
-```json
-{
-  "success": true,
-  "id": "doc-1",
-  "message": "Document doc-1 added successfully"
-}
-```
+- OpenAI embeddings have 1536 dimensions (create collection with `"dimension": 1536`)
+- Gemini embeddings have 768 dimensions (create collection with `"dimension": 768`)
+- Provider defaults to `"openai"` if not specified
 
 ### Bulk Add Documents (Automatic Embedding)
 
@@ -226,7 +243,8 @@ curl -X POST http://localhost:8000/collections/my_collection/documents/bulk \
           "level": "advanced"
         }
       }
-    ]
+    ],
+    "provider": "openai"
   }'
 ```
 
@@ -277,7 +295,8 @@ curl -X POST http://localhost:8000/translate-query \
     "filters": {
       "category": "research"
     },
-    "k": 5
+    "k": 5,
+    "provider": "openai"
   }'
 ```
 
@@ -296,12 +315,122 @@ Response:
 ]
 ```
 
+### Natural Language Queries 🆕
+
+Ask questions about your collections in plain English! The system uses LLMs to understand your intent and translate it into appropriate Qdrant operations.
+
+#### Ask Questions
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection": "midjourneysample",
+    "question": "How many artists are in this collection?",
+    "provider": "openai"
+  }'
+```
+
+Response:
+
+```json
+{
+  "question": "How many artists are in this collection?",
+  "answer": "I found 1000 unique artists in the collection. Some of them include: Chris Dyer, Catherine Hyde, Xavier Dolan, Peter Paul Rubens, Robert Crumb.",
+  "query_type": "count",
+  "data": {
+    "count": 1000,
+    "artists": ["Chris Dyer", "Catherine Hyde", "Xavier Dolan", "..."]
+  },
+  "execution_time_ms": 1250
+}
+```
+
+#### Supported Query Types
+
+**Count Queries:**
+
+```bash
+# Count total items
+"How many total images?"
+"Count all documents"
+
+# Count unique values
+"How many artists are there?"
+"Count unique categories"
+```
+
+**Search Queries:**
+
+```bash
+# Find specific items
+"Find me images by Chris Dyer"
+"Search for documents about machine learning"
+"Show me artwork from Catherine Hyde"
+```
+
+**List Queries:**
+
+```bash
+# List unique values
+"List all artists"
+"Show me all categories"
+"What artists are in this collection?"
+```
+
+**Describe Queries:**
+
+```bash
+# Get collection overview
+"Describe this collection"
+"Tell me about this dataset"
+"What's in this collection?"
+```
+
+#### Example Conversations
+
+**Artist Search:**
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection": "midjourneysample",
+    "question": "Find me images by Chris Dyer"
+  }'
+```
+
+Response: `"I found 1 images matching your criteria."`
+
+**Collection Overview:**
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection": "midjourneysample",
+    "question": "Describe this collection"
+  }'
+```
+
+Response: `"This collection contains 5417 images from 1000 unique artists. Some featured artists include: Chris Dyer, Catherine Hyde, Xavier Dolan, Peter Paul Rubens, Robert Crumb."`
+
+#### Fallback Mode
+
+The system works even without LLM API keys by using pattern matching:
+
+- Recognizes keywords like "how many", "find", "list", "describe"
+- Extracts artist names from queries like "Find images by [Artist Name]"
+- Provides structured responses based on query patterns
+
 ## Default Values
 
 - **Collection name**: `my_collection`
-- **Vector dimension**: `768` (matches OpenAI text-embedding-ada-002)
+- **Vector dimension**: `768` (Gemini) or `1536` (OpenAI)
 - **Search limit (k)**: `5`
-- **Embedding model**: `text-embedding-ada-002`
+- **Embedding provider**: `openai`
+- **OpenAI model**: `text-embedding-ada-002` (1536 dimensions)
+- **Gemini model**: `embedding-001` (768 dimensions)
 - **Vector distance**: `Cosine`
 
 ## Environment Variables
@@ -369,14 +498,14 @@ The server uses Zod for validation. Check the error details in the response for 
 
 ### Data Flow
 
-1. **Text Input** → **OpenAI Embeddings** → **Vector Representation**
+1. **Text Input** → **OpenAI/Gemini Embeddings** → **Vector Representation**
 2. **Vector + Metadata** → **Qdrant Database** → **Storage**
 3. **Search Query** → **Embedding** → **Vector Search** → **Ranked Results**
 
 ### Key Components
 
 - **Database Layer** (`qdrant/db.ts`): Manages Qdrant client and collections (supports both local and cloud)
-- **Embedder** (`qdrant/embedder.ts`): Converts text to vectors using OpenAI
+- **Embedder** (`qdrant/embedder.ts`): Converts text to vectors using OpenAI or Gemini
 - **Translator** (`qdrant/translator.ts`): Orchestrates embedding + search
 - **Routes**: RESTful API endpoints with validation
 - **Schemas**: Type-safe request/response validation with Zod

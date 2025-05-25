@@ -37,11 +37,13 @@ export async function documentsRoutes(fastify: FastifyInstance) {
         }
 
         const { collection } = request.params;
-        const { document } = validationResult.data;
+        const { document, provider } = validationResult.data;
 
         // Generate embedding from text
-        console.log(`Generating embedding for document ${document.id}...`);
-        const vector = await embed(document.text);
+        console.log(
+          `Generating embedding for document ${document.id} using ${provider}...`
+        );
+        const vector = await embed(document.text, provider);
 
         // Prepare point for Qdrant
         const point = {
@@ -114,10 +116,10 @@ export async function documentsRoutes(fastify: FastifyInstance) {
         }
 
         const { collection } = request.params;
-        const { documents } = validationResult.data;
+        const { documents, provider } = validationResult.data;
 
         console.log(
-          `Processing ${documents.length} documents for collection ${collection}...`
+          `Processing ${documents.length} documents for collection ${collection} using ${provider}...`
         );
 
         const results: Array<{ id: string; success: boolean; error?: string }> =
@@ -128,7 +130,7 @@ export async function documentsRoutes(fastify: FastifyInstance) {
         for (const document of documents) {
           try {
             // Generate embedding from text
-            const vector = await embed(document.text);
+            const vector = await embed(document.text, provider);
 
             // Prepare point for Qdrant
             const point = {

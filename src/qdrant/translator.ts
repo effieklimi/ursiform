@@ -1,11 +1,12 @@
 import { client } from "./db";
 import { embed } from "./embedder";
-import { SearchHit } from "../schemas";
+import { SearchHit, EmbeddingProvider } from "../schemas";
 
 interface TranslateAndSearchInput {
   query: string;
   filters?: Record<string, any>;
   k?: number;
+  provider?: EmbeddingProvider;
 }
 
 export async function translateAndSearch(
@@ -13,7 +14,7 @@ export async function translateAndSearch(
 ): Promise<SearchHit[]> {
   try {
     // 1. Generate embedding for the query
-    const vector = await embed(input.query);
+    const vector = await embed(input.query, input.provider || "openai");
 
     // 2. Build filter object if filters are provided
     let filter;

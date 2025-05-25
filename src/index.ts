@@ -7,6 +7,7 @@ import { vectorsRoutes } from "./routes/vectors";
 import { documentsRoutes } from "./routes/documents";
 import { translateRoutes } from "./routes/translate";
 import { healthRoutes } from "./routes/health";
+import { nlQueryRoutes } from "./routes/nl-query";
 
 const fastify = Fastify({
   logger: true,
@@ -25,6 +26,7 @@ async function start() {
     await fastify.register(documentsRoutes);
     await fastify.register(translateRoutes);
     await fastify.register(healthRoutes);
+    await fastify.register(nlQueryRoutes);
 
     // Start server
     const port = process.env.PORT ? parseInt(process.env.PORT) : 8000;
