@@ -13,11 +13,6 @@ export async function vectorsRoutes(fastify: FastifyInstance) {
     Reply: UpsertVectorsResponse;
   }>(
     "/collections/:collection/vectors",
-    {
-      schema: {
-        body: UpsertVectorsSchema,
-      },
-    },
     async (
       request: FastifyRequest<{
         Params: { collection: string };
@@ -26,8 +21,18 @@ export async function vectorsRoutes(fastify: FastifyInstance) {
       reply: FastifyReply
     ) => {
       try {
+        // Validate request body with Zod
+        const validationResult = UpsertVectorsSchema.safeParse(request.body);
+
+        if (!validationResult.success) {
+          return reply.code(400).send({
+            error: "Validation error",
+            details: validationResult.error.errors,
+          });
+        }
+
         const { collection } = request.params;
-        const { points } = request.body;
+        const { points } = validationResult.data;
 
         const result = await client.upsert(collection, {
           wait: true,

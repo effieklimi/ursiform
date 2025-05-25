@@ -19,10 +19,10 @@ yearn/
 │       ├── translate.ts        # Translation/search endpoints
 │       └── health.ts           # Health check endpoint
 ├── tests/backend/
-│   ├── test_db.ts              # Database layer tests
-│   ├── test_embedder.ts        # Embedder tests
-│   ├── test_translator.ts      # Translation logic tests
-│   └── test_routes.ts          # API endpoint tests
+│   ├── test_db.test.ts         # Database layer tests
+│   ├── test_embedder.test.ts   # Embedder tests
+│   ├── test_translator.test.ts # Translation logic tests
+│   └── test_routes.test.ts     # API endpoint tests
 ├── docker-compose.yml          # Docker services configuration (local Qdrant)
 ├── docker-compose.cloud.yml    # Docker configuration for cloud Qdrant
 ├── Dockerfile                  # Backend container configuration
@@ -50,7 +50,7 @@ yearn/
 ### Prerequisites
 
 - Node.js 18+
-- Docker and Docker Compose (for local setup)
+- Docker and Docker Compose (for local setup) - **Optional for cloud usage**
 - OpenAI API key
 - Qdrant instance (local or cloud)
 
@@ -59,7 +59,7 @@ yearn/
 1. **Clone and install dependencies:**
 
 ```bash
-yarn install
+npm install
 ```
 
 2. **Environment setup:**
@@ -92,26 +92,40 @@ GEMINI_API_KEY=<your-google-gemini-key>
 
 ## Commands
 
+### Cloud Development (No Docker Required) ⭐ **RECOMMENDED**
+
+```bash
+# Install dependencies
+npm install
+
+# Start backend for cloud Qdrant (production build)
+npm run up-cloud-local
+
+# OR start in development mode (with hot reload)
+npm run dev-cloud
+
+# OR use make commands
+make up-cloud-local
+make dev-cloud
+```
+
 ### Local Development (with Docker Qdrant)
 
 ```bash
 # Install dependencies
 make install
 
-# Start services with local Qdrant
+# Start services with local Qdrant (requires Docker)
 make up
 
 # Clean up local services
 make clean
 ```
 
-### Cloud Development (with Cloud Qdrant)
+### Docker Cloud Development (requires Docker)
 
 ```bash
-# Install dependencies
-make install
-
-# Start backend only (connects to cloud Qdrant)
+# Start backend container connected to cloud Qdrant
 make up-cloud
 
 # Clean up cloud setup
@@ -121,44 +135,19 @@ make clean-cloud
 ### Common Commands
 
 ```bash
-# Run in development mode
-make dev
-
-# Build TypeScript and Docker image
-make build
-
-# Run tests
-make test
-```
-
-### NPM Scripts
-
-```bash
-# Development server
-yarn dev
-
 # Build TypeScript
-yarn build
-
-# Start production server
-yarn start
+npm run build
 
 # Run tests
-yarn test
+npm test
 
-# Docker compose up (local)
-yarn up
-
-# Docker compose up (cloud)
-yarn up-cloud
-
-# Docker build
-yarn docker-build
+# Development server (local)
+npm run dev
 ```
 
 ## API Endpoints
 
-All endpoints remain the same regardless of whether you use local or cloud Qdrant:
+All endpoints work the same regardless of whether you use local or cloud Qdrant:
 
 ### Health Check
 
@@ -166,7 +155,7 @@ All endpoints remain the same regardless of whether you use local or cloud Qdran
 curl -X GET http://localhost:8000/health
 ```
 
-Response: `{ "status": "ok" }`
+Response: `{"status":"ok"}`
 
 ### Create Collection
 
@@ -179,7 +168,7 @@ curl -X POST http://localhost:8000/collections \
   }'
 ```
 
-Response: `{ "success": true }`
+Response: `{"success":true}`
 
 ### Upsert Vectors
 
@@ -200,7 +189,7 @@ curl -X POST http://localhost:8000/collections/my_collection/vectors \
   }'
 ```
 
-Response: `{ "upserted": 1 }`
+Response: `{"upserted":1}`
 
 ### Translate and Search
 
@@ -252,19 +241,20 @@ Response:
 
 ### Qdrant Setup Options
 
-#### Option 1: Local Qdrant (Development)
+#### Option 1: Cloud Qdrant (Recommended) ⭐
 
+- **No Docker required**
+- Set `QDRANT_URL` to your cloud cluster URL
+- Set `QDRANT_API_KEY` to your API key
+- Run with `npm run up-cloud-local` or `make up-cloud-local`
+
+#### Option 2: Local Qdrant (Development)
+
+- **Requires Docker**
 - Use `docker-compose.yml`
 - Set `QDRANT_URL=http://qdrant:6333`
 - No API key needed
 - Run with `make up`
-
-#### Option 2: Cloud Qdrant (Production)
-
-- Use `docker-compose.cloud.yml`
-- Set `QDRANT_URL` to your cloud cluster URL
-- Set `QDRANT_API_KEY` to your API key
-- Run with `make up-cloud`
 
 ## Testing
 
@@ -272,14 +262,32 @@ The project includes comprehensive tests for all components:
 
 ```bash
 # Run all tests
-make test
+npm test
 
 # Run specific test file
-yarn test test_db
+npm test test_db
 
 # Run tests with coverage
-yarn test --coverage
+npm test -- --coverage
 ```
+
+## Troubleshooting
+
+### Docker Issues
+
+If you get `docker-compose: command not found`:
+
+- **For cloud Qdrant**: Use `npm run up-cloud-local` instead (no Docker needed)
+- **For local development**: Install Docker Desktop or use cloud Qdrant
+
+### Validation Errors
+
+The server uses Zod for validation. Check the error details in the response for specific validation issues.
+
+### Connection Issues
+
+- **Cloud Qdrant**: Verify your `QDRANT_URL` and `QDRANT_API_KEY` are correct
+- **Local Qdrant**: Ensure Docker is running and Qdrant container is healthy
 
 ## Architecture
 
@@ -299,18 +307,18 @@ yarn test --coverage
 
 ## Production Deployment
 
+### Cloud Qdrant (Recommended)
+
+```bash
+npm run build
+npm start
+```
+
 ### Local Qdrant
 
 ```bash
 make build
 docker-compose up -d
-```
-
-### Cloud Qdrant
-
-```bash
-make build
-docker-compose -f docker-compose.cloud.yml up -d
 ```
 
 ### Scale Services

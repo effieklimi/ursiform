@@ -12,17 +12,22 @@ export async function translateRoutes(fastify: FastifyInstance) {
     Reply: TranslateQueryResponse;
   }>(
     "/translate-query",
-    {
-      schema: {
-        body: TranslateQuerySchema,
-      },
-    },
     async (
       request: FastifyRequest<{ Body: TranslateQueryRequest }>,
       reply: FastifyReply
     ) => {
       try {
-        const { query, filters, k } = request.body;
+        // Validate request body with Zod
+        const validationResult = TranslateQuerySchema.safeParse(request.body);
+
+        if (!validationResult.success) {
+          return reply.code(400).send({
+            error: "Validation error",
+            details: validationResult.error.errors,
+          });
+        }
+
+        const { query, filters, k } = validationResult.data;
 
         const results = await translateAndSearch({
           query,

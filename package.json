@@ -2,17 +2,20 @@
   "name": "yearn-backend",
   "version": "1.0.0",
   "description": "Backend service with Fastify, TypeScript, and Qdrant vector database",
+  "license": "MIT",
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "dev-cloud": "ts-node src/index.ts",
     "build": "tsc",
     "test": "jest",
-    "up": "docker-compose up --build",
-    "up-cloud": "docker-compose -f docker-compose.cloud.yml up --build",
+    "up": "docker compose up --build",
+    "up-cloud": "docker compose -f docker-compose.cloud.yml up --build",
+    "up-cloud-local": "npm run build && npm start",
     "docker-build": "tsc && docker build -t backend .",
-    "clean": "docker-compose down",
-    "clean-cloud": "docker-compose -f docker-compose.cloud.yml down"
+    "clean": "docker compose down",
+    "clean-cloud": "docker compose -f docker-compose.cloud.yml down"
   },
   "dependencies": {
     "fastify": "^4.24.3",
