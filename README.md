@@ -1,218 +1,93 @@
-# Yearn - Vector Database with Natural Language Interface
+# Yearn - Natural Language Query Interface for Vector Databases
 
-A complete full-stack application with Fastify backend, Next.js frontend, and Qdrant vector database for semantic search and natural language queries.
+A modern, full-stack web application that provides a ChatGPT-like interface for querying Qdrant vector databases using natural language.
 
-## Project Structure
+## 🏗️ **Architecture**
+
+This is a **unified Next.js application** that combines both frontend and backend functionality:
+
+- **Frontend**: React + Next.js + Tailwind CSS + shadcn/ui
+- **Backend**: Next.js API Routes (serverless functions)
+- **Vector Database**: Qdrant Cloud integration
+- **AI/LLM**: OpenAI GPT-3.5 & Google Gemini support
+- **Deployment**: Docker + Render ready
+
+## 📁 **Project Structure**
 
 ```
-yearn/
-├── src/
-│   ├── frontend/               # Next.js frontend application
-│   │   ├── src/
-│   │   │   ├── app/           # Next.js App Router pages
-│   │   │   ├── components/    # React components (shadcn/ui)
-│   │   │   └── lib/           # Utilities and API functions
-│   │   ├── package.json       # Frontend dependencies
-│   │   └── README-frontend.md # Frontend documentation
-│   ├── index.ts               # Backend entry point
-│   ├── schemas.ts             # Zod schemas & TypeScript types
-│   ├── qdrant/
-│   │   ├── db.ts             # Qdrant client initialization & collection management
-│   │   ├── embedder.ts       # OpenAI & Gemini embeddings integration
-│   │   ├── translator.ts     # Translation and semantic search logic
-│   │   └── nlp-query.ts      # Natural language query processing
-│   └── routes/
-│       ├── collections.ts    # Collection management endpoints
-│       ├── vectors.ts        # Vector upsert endpoints
-│       ├── documents.ts      # Document ingestion endpoints
-│       ├── translate.ts      # Translation/search endpoints
-│       ├── nl-query.ts       # Natural language query endpoints
-│       └── health.ts         # Health check endpoint
-├── tests/backend/
-│   ├── test_db.test.ts       # Database layer tests
-│   ├── test_embedder.test.ts # Embedder tests
-│   ├── test_translator.test.ts # Translation logic tests
-│   └── test_routes.test.ts   # API endpoint tests
-├── docker-compose.yml        # Docker services configuration (local Qdrant)
-├── docker-compose.cloud.yml  # Docker configuration for cloud Qdrant
-├── Dockerfile                # Backend container configuration
-├── package.json              # Backend dependencies and scripts
-├── tsconfig.json            # TypeScript configuration
-├── jest.config.js           # Test configuration
-├── Makefile                 # Build and deployment commands
-└── env.example              # Environment variables template
+yearn/                          # Root directory
+├── pages/                      # Next.js pages & API routes
+│   ├── api/                    # Backend API endpoints
+│   │   ├── health.ts           # Health check endpoint
+│   │   └── ask.ts              # Natural language query endpoint
+│   ├── _app.tsx                # App wrapper
+│   └── index.tsx               # Main chat interface page
+├── components/                 # React components
+│   ├── ui/                     # shadcn/ui components
+│   └── chat-interface.tsx      # Main chat component
+├── lib/                        # Shared utilities & logic
+│   ├── api.ts                  # Frontend API calls
+│   ├── types.ts                # TypeScript interfaces
+│   ├── schemas.ts              # Zod validation schemas
+│   └── qdrant/                 # Vector database logic
+│       ├── db.ts               # Qdrant client
+│       └── nlp-query.ts        # Natural language processing
+├── styles/                     # Global CSS styles
+├── public/                     # Static assets
+├── Dockerfile                  # Production container
+├── docker-compose.yml          # Local development
+├── package.json                # Dependencies & scripts
+├── next.config.js              # Next.js configuration
+├── tailwind.config.js          # Tailwind CSS config
+└── tsconfig.json               # TypeScript config
 ```
 
-## Features
+## 🚀 **Quick Start**
 
-- **🎨 Beautiful Frontend**: Next.js with shadcn/ui and Tailwind CSS
-- **💬 Chat Interface**: ChatGPT-like natural language queries
-- **⚡ Fastify Backend**: High-performance API with TypeScript
-- **🔍 Qdrant Integration**: Vector database for similarity search (local or cloud)
-- **🤖 Multiple LLM Providers**: Support for OpenAI and Google Gemini
-- **🗣️ Natural Language Queries**: Ask questions in plain English about your collections
-- **📡 RESTful API**: Clean endpoints for collection and vector management
-- **🔄 Semantic Search**: Translate natural language queries to vector searches
-- **🐳 Docker Support**: Containerized deployment with docker-compose
-- **🧪 Comprehensive Testing**: Unit tests with Jest and mocking
-- **✅ Input Validation**: Zod schemas for request/response validation
-- **☁️ Cloud Ready**: Supports both local and cloud-hosted Qdrant instances
+### **Prerequisites**
 
-## Setup
+- Node.js 18.0+ (18.17+ recommended)
+- npm or yarn
+- Qdrant Cloud account (or local Qdrant instance)
+- OpenAI API key (optional, has fallback)
+- Google Gemini API key (optional)
 
-### Prerequisites
-
-- Node.js 18+
-- Docker and Docker Compose (for local setup) - **Optional for cloud usage**
-- OpenAI API key
-- Qdrant instance (local or cloud)
-
-### Installation
-
-1. **Clone and install dependencies:**
+### **1. Clone & Install**
 
 ```bash
+git clone <your-repo-url>
+cd yearn
 npm install
 ```
 
-2. **Environment setup:**
+### **2. Environment Setup**
 
-```bash
-cp env.example .env
+Create a `.env` file in the root directory:
+
+```env
+# Qdrant Configuration
+QDRANT_URL=your-qdrant-cloud-url
+QDRANT_API_KEY=your-qdrant-api-key
+QDRANT_HTTPS=true
+
+# AI/LLM API Keys (optional - has pattern matching fallback)
+OPENAI_API_KEY=your-openai-api-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
-#### For Local Qdrant (Docker)
-
-Edit `.env` file:
+### **3. Development**
 
 ```bash
-QDRANT_URL=http://qdrant:6333
-# QDRANT_API_KEY not needed for local
-OPENAI_API_KEY=<your-openai-key>
-GEMINI_API_KEY=<your-google-gemini-key>
-```
-
-#### For Cloud Qdrant (Qdrant Cloud, AWS, etc.)
-
-Edit `.env` file:
-
-```bash
-QDRANT_URL=https://your-cluster-url.aws.cloud.qdrant.io:6333
-QDRANT_API_KEY=<your-qdrant-api-key>
-OPENAI_API_KEY=<your-openai-key>
-GEMINI_API_KEY=<your-google-gemini-key>
-```
-
-## Commands
-
-### Cloud Development (No Docker Required) ⭐ **RECOMMENDED**
-
-```bash
-# Install dependencies
-npm install
-
-# Start backend for cloud Qdrant (production build)
-npm run up-cloud-local
-
-# OR start in development mode (with hot reload)
-npm run dev-cloud
-
-# OR use make commands
-make up-cloud-local
-make dev-cloud
-```
-
-### Local Development (with Docker Qdrant)
-
-```bash
-# Install dependencies
-make install
-
-# Start services with local Qdrant (requires Docker)
-make up
-
-# Clean up local services
-make clean
-```
-
-### Docker Cloud Development (requires Docker)
-
-```bash
-# Start backend container connected to cloud Qdrant
-make up-cloud
-
-# Clean up cloud setup
-make clean-cloud
-```
-
-### Common Commands
-
-```bash
-# Build TypeScript
-npm run build
-
-# Run tests
-npm test
-
-# Development server (local)
-npm run dev
-```
-
-## Frontend Chat Interface 🎨
-
-The project includes a beautiful Next.js frontend with a ChatGPT-like interface for natural language queries.
-
-### Quick Start
-
-1. **Start the backend** (from project root):
-
-```bash
-npm run up-cloud-local  # or npm start
-```
-
-2. **Start the frontend** (in a new terminal):
-
-```bash
-cd src/frontend
-npm install
-npm run dev
-```
-
-3. **Open your browser**:
-   Navigate to `http://localhost:3000`
-
-### Using the Chat Interface
-
-1. **Collection**: Enter your Qdrant collection name (defaults to "midjourneysample")
-2. **Provider**: Choose between OpenAI or Gemini for LLM processing
-3. **Ask Questions**: Type natural language questions about your data
-
-**Example Questions:**
-
-- "How many artists are in this collection?"
-- "Find me images by Chris Dyer"
-- "List all artists"
-- "Describe this collection"
-
-### Frontend Features
-
-- 🎨 **Beautiful UI**: Built with shadcn/ui and Tailwind CSS
-- 💬 **Chat Interface**: Real-time conversation with your data
-- 📱 **Responsive**: Works on desktop and mobile
-- ⚡ **Fast**: Next.js with TypeScript
-- 🔄 **Live Updates**: Shows query types, execution times, and structured data
-
-### Frontend Development
-
-```bash
-cd src/frontend
-
-# Install dependencies
-npm install
-
 # Start development server
 npm run dev
 
+# Open browser
+open http://localhost:3000
+```
+
+### **4. Production Build**
+
+```bash
 # Build for production
 npm run build
 
@@ -220,389 +95,174 @@ npm run build
 npm start
 ```
 
-## API Endpoints
+## 🐳 **Docker Deployment**
 
-All endpoints work the same regardless of whether you use local or cloud Qdrant:
-
-### Health Check
+### **Local Docker**
 
 ```bash
-curl -X GET http://localhost:8000/health
+# Build and run with Docker Compose
+npm run docker:up
+
+# Or manually
+docker build -t yearn .
+docker run -p 3000:3000 --env-file .env yearn
 ```
 
-Response: `{"status":"ok"}`
+### **Render Deployment**
 
-### Create Collection
+1. **Connect your GitHub repository** to Render
+2. **Create a new Web Service** with these settings:
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm start`
+   - **Environment**: Add your `.env` variables
+3. **Deploy** - Render will automatically build and deploy
 
-```bash
-curl -X POST http://localhost:8000/collections \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my_collection",
-    "dimension": 768
-  }'
-```
+### **Alternative: Docker on Render**
 
-Response: `{"success":true}`
+1. **Create a new Web Service**
+2. **Select "Docker"** as the environment
+3. **Set Dockerfile path**: `./Dockerfile`
+4. **Add environment variables** from your `.env`
 
-### Add Document (Automatic Embedding) ⭐ **RECOMMENDED**
+## 🔧 **Configuration**
 
-Add a single document with automatic embedding generation:
+### **Environment Variables**
 
-```bash
-# Using OpenAI embeddings (default)
-curl -X POST http://localhost:8000/collections/my_collection/documents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "document": {
-      "id": "doc-1",
-      "text": "This is a comprehensive guide to machine learning algorithms and their applications in modern AI systems.",
-      "metadata": {
-        "title": "ML Guide",
-        "category": "education",
-        "author": "Jane Doe",
-        "tags": ["machine learning", "AI", "algorithms"]
-      }
-    },
-    "provider": "openai"
-  }'
+| Variable         | Required | Description               |
+| ---------------- | -------- | ------------------------- |
+| `QDRANT_URL`     | ✅       | Your Qdrant Cloud URL     |
+| `QDRANT_API_KEY` | ✅       | Your Qdrant API key       |
+| `QDRANT_HTTPS`   | ❌       | Use HTTPS (default: true) |
+| `OPENAI_API_KEY` | ❌       | OpenAI API key for GPT    |
+| `GEMINI_API_KEY` | ❌       | Google Gemini API key     |
 
-# Using Google Gemini embeddings
-curl -X POST http://localhost:8000/collections/my_collection/documents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "document": {
-      "id": "doc-2",
-      "text": "Advanced neural network architectures for natural language processing.",
-      "metadata": {
-        "title": "NLP Guide",
-        "category": "research"
-      }
-    },
-    "provider": "gemini"
-  }'
-```
+### **Next.js Configuration**
 
-**Note**:
+The `next.config.js` includes:
 
-- OpenAI embeddings have 1536 dimensions (create collection with `"dimension": 1536`)
-- Gemini embeddings have 768 dimensions (create collection with `"dimension": 768`)
-- Provider defaults to `"openai"` if not specified
+- Standalone output for Docker
+- Webpack externals for server-side modules
+- Environment variable exposure
 
-### Bulk Add Documents (Automatic Embedding)
+## 🎯 **Features**
 
-Add multiple documents with automatic embedding generation:
+### **Natural Language Queries**
 
-```bash
-curl -X POST http://localhost:8000/collections/my_collection/documents/bulk \
-  -H "Content-Type: application/json" \
-  -d '{
-    "documents": [
-      {
-        "id": "doc-1",
-        "text": "Introduction to artificial intelligence and machine learning concepts.",
-        "metadata": {
-          "category": "AI",
-          "level": "beginner"
-        }
-      },
-      {
-        "id": "doc-2",
-        "text": "Advanced deep learning techniques for computer vision applications.",
-        "metadata": {
-          "category": "Deep Learning",
-          "level": "advanced"
-        }
-      }
-    ],
-    "provider": "openai"
-  }'
-```
+- **Count**: "How many artists are in this collection?"
+- **Search**: "Find me images by Chris Dyer"
+- **List**: "Show me all unique artists"
+- **Filter**: "Images with .jpeg extension"
+- **Describe**: "Tell me about this collection"
 
-Response:
+### **AI/LLM Integration**
+
+- **Primary**: OpenAI GPT-3.5 Turbo
+- **Secondary**: Google Gemini Pro
+- **Fallback**: Pattern matching (works without API keys)
+
+### **User Interface**
+
+- **ChatGPT-like interface** with conversation history
+- **Real-time responses** with loading states
+- **Collection & provider selection** dropdowns
+- **Query metadata display** (execution time, query type)
+- **Responsive design** with Tailwind CSS
+
+## 📊 **API Endpoints**
+
+### **GET /api/health**
+
+Health check endpoint.
+
+**Response:**
 
 ```json
 {
-  "success": true,
-  "processed": 2,
-  "failed": 0,
-  "results": [
-    { "id": "doc-1", "success": true },
-    { "id": "doc-2", "success": true }
-  ]
+  "status": "ok",
+  "timestamp": "2025-05-25T19:40:03.826Z"
 }
 ```
 
-### Upsert Vectors (Manual Vectors)
+### **POST /api/ask**
 
-For advanced users who want to provide pre-computed vectors:
+Natural language query endpoint.
 
-```bash
-curl -X POST http://localhost:8000/collections/my_collection/vectors \
-  -H "Content-Type: application/json" \
-  -d '{
-    "points": [
-      {
-        "id": "doc-1",
-        "vector": [0.1, 0.2, 0.3, 0.4, 0.5],
-        "payload": {
-          "title": "Sample Document",
-          "category": "example"
-        }
-      }
-    ]
-  }'
-```
-
-Response: `{"upserted":1}`
-
-### Translate and Search
-
-```bash
-curl -X POST http://localhost:8000/translate-query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "find documents about machine learning",
-    "filters": {
-      "category": "research"
-    },
-    "k": 5,
-    "provider": "openai"
-  }'
-```
-
-Response:
-
-```json
-[
-  {
-    "id": "doc-1",
-    "score": 0.95,
-    "payload": {
-      "title": "Machine Learning Basics",
-      "category": "research"
-    }
-  }
-]
-```
-
-### Natural Language Queries 🆕
-
-Ask questions about your collections in plain English! The system uses LLMs to understand your intent and translate it into appropriate Qdrant operations.
-
-#### Ask Questions
-
-```bash
-curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "collection": "midjourneysample",
-    "question": "How many artists are in this collection?",
-    "provider": "openai"
-  }'
-```
-
-Response:
+**Request:**
 
 ```json
 {
-  "question": "How many artists are in this collection?",
-  "answer": "I found 1000 unique artists in the collection. Some of them include: Chris Dyer, Catherine Hyde, Xavier Dolan, Peter Paul Rubens, Robert Crumb.",
+  "collection": "midjourneysample",
+  "question": "How many artists are there?",
+  "provider": "openai"
+}
+```
+
+**Response:**
+
+```json
+{
+  "question": "How many artists are there?",
+  "answer": "I found 1000 unique artists in the collection...",
   "query_type": "count",
-  "data": {
-    "count": 1000,
-    "artists": ["Chris Dyer", "Catherine Hyde", "Xavier Dolan", "..."]
-  },
+  "data": { "count": 1000, "artists": ["Chris Dyer", "..."] },
   "execution_time_ms": 1250
 }
 ```
 
-#### Supported Query Types
+## 🧪 **Testing**
 
-**Count Queries:**
-
-```bash
-# Count total items
-"How many total images?"
-"Count all documents"
-
-# Count unique values
-"How many artists are there?"
-"Count unique categories"
-```
-
-**Search Queries:**
+### **API Testing**
 
 ```bash
-# Find specific items
-"Find me images by Chris Dyer"
-"Search for documents about machine learning"
-"Show me artwork from Catherine Hyde"
-```
+# Health check
+curl http://localhost:3000/api/health
 
-**List Queries:**
-
-```bash
-# List unique values
-"List all artists"
-"Show me all categories"
-"What artists are in this collection?"
-```
-
-**Describe Queries:**
-
-```bash
-# Get collection overview
-"Describe this collection"
-"Tell me about this dataset"
-"What's in this collection?"
-```
-
-#### Example Conversations
-
-**Artist Search:**
-
-```bash
-curl -X POST http://localhost:8000/ask \
+# Natural language query
+curl -X POST http://localhost:3000/api/ask \
   -H "Content-Type: application/json" \
-  -d '{
-    "collection": "midjourneysample",
-    "question": "Find me images by Chris Dyer"
-  }'
+  -d '{"question": "How many artists?", "collection": "midjourneysample", "provider": "openai"}'
 ```
 
-Response: `"I found 1 images matching your criteria."`
+### **Frontend Testing**
 
-**Collection Overview:**
+1. Open http://localhost:3000
+2. Select your collection and provider
+3. Ask questions like:
+   - "How many artists are in this collection?"
+   - "Find me images by Chris Dyer"
+   - "List all unique artists"
+
+## 🔍 **Troubleshooting**
+
+### **Common Issues**
+
+1. **Node.js Version**: Ensure you're using Node.js 18.17+
+2. **API Keys**: Check your Qdrant and LLM API keys
+3. **Collection Name**: Verify your Qdrant collection exists
+4. **CORS Issues**: API routes include CORS headers
+
+### **Logs**
 
 ```bash
-curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "collection": "midjourneysample",
-    "question": "Describe this collection"
-  }'
+# Development logs
+npm run dev
+
+# Production logs
+docker logs <container-id>
 ```
 
-Response: `"This collection contains 5417 images from 1000 unique artists. Some featured artists include: Chris Dyer, Catherine Hyde, Xavier Dolan, Peter Paul Rubens, Robert Crumb."`
+## 🤝 **Contributing**
 
-#### Fallback Mode
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
-The system works even without LLM API keys by using pattern matching:
+## 📄 **License**
 
-- Recognizes keywords like "how many", "find", "list", "describe"
-- Extracts artist names from queries like "Find images by [Artist Name]"
-- Provides structured responses based on query patterns
+MIT License - see LICENSE file for details.
 
-## Default Values
+---
 
-- **Collection name**: `my_collection`
-- **Vector dimension**: `768` (Gemini) or `1536` (OpenAI)
-- **Search limit (k)**: `5`
-- **Embedding provider**: `openai`
-- **OpenAI model**: `text-embedding-ada-002` (1536 dimensions)
-- **Gemini model**: `embedding-001` (768 dimensions)
-- **Vector distance**: `Cosine`
-
-## Environment Variables
-
-| Variable         | Description                   | Default                 | Required |
-| ---------------- | ----------------------------- | ----------------------- | -------- |
-| `QDRANT_URL`     | Qdrant database URL           | `http://localhost:6333` | Yes      |
-| `QDRANT_API_KEY` | Qdrant API key (cloud only)   | None                    | Cloud    |
-| `OPENAI_API_KEY` | OpenAI API key for embeddings | None                    | Yes      |
-| `GEMINI_API_KEY` | Google Gemini API key         | None                    | Optional |
-| `PORT`           | Server port                   | `8000`                  | No       |
-| `HOST`           | Server host                   | `0.0.0.0`               | No       |
-
-### Qdrant Setup Options
-
-#### Option 1: Cloud Qdrant (Recommended) ⭐
-
-- **No Docker required**
-- Set `QDRANT_URL` to your cloud cluster URL
-- Set `QDRANT_API_KEY` to your API key
-- Run with `npm run up-cloud-local` or `make up-cloud-local`
-
-#### Option 2: Local Qdrant (Development)
-
-- **Requires Docker**
-- Use `docker-compose.yml`
-- Set `QDRANT_URL=http://qdrant:6333`
-- No API key needed
-- Run with `make up`
-
-## Testing
-
-The project includes comprehensive tests for all components:
-
-```bash
-# Run all tests
-npm test
-
-# Run specific test file
-npm test test_db
-
-# Run tests with coverage
-npm test -- --coverage
-```
-
-## Troubleshooting
-
-### Docker Issues
-
-If you get `docker-compose: command not found`:
-
-- **For cloud Qdrant**: Use `npm run up-cloud-local` instead (no Docker needed)
-- **For local development**: Install Docker Desktop or use cloud Qdrant
-
-### Validation Errors
-
-The server uses Zod for validation. Check the error details in the response for specific validation issues.
-
-### Connection Issues
-
-- **Cloud Qdrant**: Verify your `QDRANT_URL` and `QDRANT_API_KEY` are correct
-- **Local Qdrant**: Ensure Docker is running and Qdrant container is healthy
-
-## Architecture
-
-### Data Flow
-
-1. **Text Input** → **OpenAI/Gemini Embeddings** → **Vector Representation**
-2. **Vector + Metadata** → **Qdrant Database** → **Storage**
-3. **Search Query** → **Embedding** → **Vector Search** → **Ranked Results**
-
-### Key Components
-
-- **Database Layer** (`qdrant/db.ts`): Manages Qdrant client and collections (supports both local and cloud)
-- **Embedder** (`qdrant/embedder.ts`): Converts text to vectors using OpenAI or Gemini
-- **Translator** (`qdrant/translator.ts`): Orchestrates embedding + search
-- **Routes**: RESTful API endpoints with validation
-- **Schemas**: Type-safe request/response validation with Zod
-
-## Production Deployment
-
-### Cloud Qdrant (Recommended)
-
-```bash
-npm run build
-npm start
-```
-
-### Local Qdrant
-
-```bash
-make build
-docker-compose up -d
-```
-
-### Scale Services
-
-```bash
-docker-compose up -d --scale backend=3
-```
-
-## License
-
-Open source - feel free to use and modify as needed.
+**Built with ❤️ using Next.js, Qdrant, and modern web technologies.**
