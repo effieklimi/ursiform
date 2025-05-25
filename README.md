@@ -1,53 +1,62 @@
-# Yearn Backend
+# Yearn - Vector Database with Natural Language Interface
 
-A complete backend service built with Fastify, TypeScript, and Qdrant vector database for semantic search and vector operations.
+A complete full-stack application with Fastify backend, Next.js frontend, and Qdrant vector database for semantic search and natural language queries.
 
 ## Project Structure
 
 ```
 yearn/
 ├── src/
-│   ├── index.ts                 # Main application entry point
-│   ├── schemas.ts               # Zod schemas & TypeScript types
+│   ├── frontend/               # Next.js frontend application
+│   │   ├── src/
+│   │   │   ├── app/           # Next.js App Router pages
+│   │   │   ├── components/    # React components (shadcn/ui)
+│   │   │   └── lib/           # Utilities and API functions
+│   │   ├── package.json       # Frontend dependencies
+│   │   └── README-frontend.md # Frontend documentation
+│   ├── index.ts               # Backend entry point
+│   ├── schemas.ts             # Zod schemas & TypeScript types
 │   ├── qdrant/
-│   │   ├── db.ts               # Qdrant client initialization & collection management
-│   │   ├── embedder.ts         # OpenAI & Gemini embeddings integration
-│   │   ├── translator.ts       # Translation and semantic search logic
-│   │   └── nlp-query.ts        # Natural language query processing
+│   │   ├── db.ts             # Qdrant client initialization & collection management
+│   │   ├── embedder.ts       # OpenAI & Gemini embeddings integration
+│   │   ├── translator.ts     # Translation and semantic search logic
+│   │   └── nlp-query.ts      # Natural language query processing
 │   └── routes/
-│       ├── collections.ts      # Collection management endpoints
-│       ├── vectors.ts          # Vector upsert endpoints
-│       ├── documents.ts        # Document ingestion endpoints
-│       ├── translate.ts        # Translation/search endpoints
-│       ├── nl-query.ts         # Natural language query endpoints
-│       └── health.ts           # Health check endpoint
+│       ├── collections.ts    # Collection management endpoints
+│       ├── vectors.ts        # Vector upsert endpoints
+│       ├── documents.ts      # Document ingestion endpoints
+│       ├── translate.ts      # Translation/search endpoints
+│       ├── nl-query.ts       # Natural language query endpoints
+│       └── health.ts         # Health check endpoint
 ├── tests/backend/
-│   ├── test_db.test.ts         # Database layer tests
-│   ├── test_embedder.test.ts   # Embedder tests
+│   ├── test_db.test.ts       # Database layer tests
+│   ├── test_embedder.test.ts # Embedder tests
 │   ├── test_translator.test.ts # Translation logic tests
-│   └── test_routes.test.ts     # API endpoint tests
-├── docker-compose.yml          # Docker services configuration (local Qdrant)
-├── docker-compose.cloud.yml    # Docker configuration for cloud Qdrant
-├── Dockerfile                  # Backend container configuration
-├── package.json                # Dependencies and scripts
-├── tsconfig.json              # TypeScript configuration
-├── jest.config.js             # Test configuration
-├── Makefile                   # Build and deployment commands
-└── env.example                # Environment variables template
+│   └── test_routes.test.ts   # API endpoint tests
+├── docker-compose.yml        # Docker services configuration (local Qdrant)
+├── docker-compose.cloud.yml  # Docker configuration for cloud Qdrant
+├── Dockerfile                # Backend container configuration
+├── package.json              # Backend dependencies and scripts
+├── tsconfig.json            # TypeScript configuration
+├── jest.config.js           # Test configuration
+├── Makefile                 # Build and deployment commands
+└── env.example              # Environment variables template
 ```
 
 ## Features
 
-- **Fastify + TypeScript**: High-performance web framework with type safety
-- **Qdrant Integration**: Vector database for similarity search (local or cloud)
-- **Multiple Embedding Providers**: Support for OpenAI (`text-embedding-ada-002`) and Google Gemini (`embedding-001`)
-- **Natural Language Queries**: Ask questions in plain English about your collections 🆕
-- **RESTful API**: Clean endpoints for collection and vector management
-- **Semantic Search**: Translate natural language queries to vector searches
-- **Docker Support**: Containerized deployment with docker-compose
-- **Comprehensive Testing**: Unit tests with Jest and mocking
-- **Input Validation**: Zod schemas for request/response validation
-- **Cloud Ready**: Supports both local and cloud-hosted Qdrant instances
+- **🎨 Beautiful Frontend**: Next.js with shadcn/ui and Tailwind CSS
+- **💬 Chat Interface**: ChatGPT-like natural language queries
+- **⚡ Fastify Backend**: High-performance API with TypeScript
+- **🔍 Qdrant Integration**: Vector database for similarity search (local or cloud)
+- **🤖 Multiple LLM Providers**: Support for OpenAI and Google Gemini
+- **🗣️ Natural Language Queries**: Ask questions in plain English about your collections
+- **📡 RESTful API**: Clean endpoints for collection and vector management
+- **🔄 Semantic Search**: Translate natural language queries to vector searches
+- **🐳 Docker Support**: Containerized deployment with docker-compose
+- **🧪 Comprehensive Testing**: Unit tests with Jest and mocking
+- **✅ Input Validation**: Zod schemas for request/response validation
+- **☁️ Cloud Ready**: Supports both local and cloud-hosted Qdrant instances
 
 ## Setup
 
@@ -147,6 +156,68 @@ npm test
 
 # Development server (local)
 npm run dev
+```
+
+## Frontend Chat Interface 🎨
+
+The project includes a beautiful Next.js frontend with a ChatGPT-like interface for natural language queries.
+
+### Quick Start
+
+1. **Start the backend** (from project root):
+
+```bash
+npm run up-cloud-local  # or npm start
+```
+
+2. **Start the frontend** (in a new terminal):
+
+```bash
+cd src/frontend
+npm install
+npm run dev
+```
+
+3. **Open your browser**:
+   Navigate to `http://localhost:3000`
+
+### Using the Chat Interface
+
+1. **Collection**: Enter your Qdrant collection name (defaults to "midjourneysample")
+2. **Provider**: Choose between OpenAI or Gemini for LLM processing
+3. **Ask Questions**: Type natural language questions about your data
+
+**Example Questions:**
+
+- "How many artists are in this collection?"
+- "Find me images by Chris Dyer"
+- "List all artists"
+- "Describe this collection"
+
+### Frontend Features
+
+- 🎨 **Beautiful UI**: Built with shadcn/ui and Tailwind CSS
+- 💬 **Chat Interface**: Real-time conversation with your data
+- 📱 **Responsive**: Works on desktop and mobile
+- ⚡ **Fast**: Next.js with TypeScript
+- 🔄 **Live Updates**: Shows query types, execution times, and structured data
+
+### Frontend Development
+
+```bash
+cd src/frontend
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
 ## API Endpoints
