@@ -4,7 +4,9 @@ import {
   NaturalQueryRequest,
   NaturalQueryResponse,
   AVAILABLE_MODELS,
+  ConversationContext,
 } from "../../lib/types";
+import { EmbeddingProvider } from "../../lib/schemas";
 
 export default async function handler(
   req: NextApiRequest,
@@ -27,7 +29,19 @@ export default async function handler(
   }
 
   try {
-    const { collection, question, model } = req.body as NaturalQueryRequest;
+    const {
+      question,
+      collection,
+      provider = "openai",
+      model,
+      context, // Add conversation context parameter
+    }: {
+      question: string;
+      collection?: string;
+      provider?: EmbeddingProvider;
+      model?: string;
+      context?: ConversationContext; // Add context type
+    } = req.body as NaturalQueryRequest;
 
     if (!question) {
       res.status(400).json({
@@ -40,7 +54,7 @@ export default async function handler(
     const selectedModel = model || "gemini-2.0-flash";
     const modelInfo =
       AVAILABLE_MODELS[selectedModel as keyof typeof AVAILABLE_MODELS];
-    const provider = modelInfo?.provider || "gemini";
+    const providerInfo = modelInfo?.provider || "gemini";
 
     console.log(
       `Processing natural language query: "${question}" for collection: ${
@@ -49,10 +63,11 @@ export default async function handler(
     );
 
     const result = await processNaturalQuery(
-      collection || null, // Allow null for database-level queries
+      collection || null,
       question,
-      provider,
-      selectedModel // Pass the specific model
+      providerInfo,
+      selectedModel,
+      context // Pass context to processing function
     );
 
     // Transform the result to match NaturalQueryResponse interface
@@ -62,6 +77,7 @@ export default async function handler(
       query_type: result.query_type,
       data: result.data,
       execution_time_ms: result.execution_time_ms,
+      context: result.context, // Return updated conversation context
     };
 
     res.status(200).json(response);

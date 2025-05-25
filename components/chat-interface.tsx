@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChatMessage, AVAILABLE_MODELS, ModelKey } from "@/lib/types";
+import {
+  ChatMessage,
+  AVAILABLE_MODELS,
+  ModelKey,
+  ConversationContext,
+} from "@/lib/types";
 
 interface DynamicExamples {
   database: string[];
@@ -18,8 +23,12 @@ export default function ChatInterface() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<ModelKey>("o1");
+  const [selectedModel, setSelectedModel] = useState<ModelKey>("gpt-4o-mini");
   const [collections, setCollections] = useState<string[]>([]);
+  const [conversationContext, setConversationContext] =
+    useState<ConversationContext>({
+      conversationHistory: [],
+    });
   const [demoExamples, setDemoExamples] = useState<DynamicExamples>({
     database: [
       "What collections exist in my database?",
@@ -186,11 +195,19 @@ export default function ChatInterface() {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
+    console.log("🚀 SUBMITTING QUERY:");
+    console.log("Question:", inputValue);
+    console.log(
+      "Current context being sent:",
+      JSON.stringify(conversationContext, null, 2)
+    );
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
       content: inputValue,
       timestamp: new Date(),
+      context: conversationContext,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -205,6 +222,7 @@ export default function ChatInterface() {
           collection: selectedCollection || undefined,
           question: inputValue,
           model: selectedModel,
+          context: conversationContext,
         }),
       });
 
@@ -213,6 +231,8 @@ export default function ChatInterface() {
       }
 
       const data = await response.json();
+      console.log("📥 RECEIVED RESPONSE:");
+      console.log("Response data:", JSON.stringify(data, null, 2));
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -222,9 +242,16 @@ export default function ChatInterface() {
         queryType: data.query_type,
         executionTime: data.execution_time_ms,
         data: data.data,
+        context: data.context,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      if (data.context) {
+        console.log("📝 UPDATING FRONTEND CONTEXT:");
+        console.log("New context:", JSON.stringify(data.context, null, 2));
+        setConversationContext(data.context);
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       const errorMessage: ChatMessage = {
@@ -534,6 +561,59 @@ export default function ChatInterface() {
                   ))}
                 </select>
               </div>
+
+              {/* Conversation Context Indicator */}
+              {(conversationContext.lastEntity ||
+                conversationContext.lastCollection ||
+                conversationContext.conversationHistory.length > 0) && (
+                <div className="border-t border-gray-700 pt-3">
+                  <label className="text-xs font-medium mb-2 block text-gray-300">
+                    Conversation Context
+                  </label>
+                  <div className="space-y-1">
+                    {conversationContext.lastEntity && (
+                      <div className="text-xs bg-purple-900/30 rounded px-2 py-1 border border-purple-700/50">
+                        <span className="text-purple-300">Entity:</span>{" "}
+                        <span className="text-white">
+                          {conversationContext.lastEntity}
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.lastCollection && (
+                      <div className="text-xs bg-blue-900/30 rounded px-2 py-1 border border-blue-700/50">
+                        <span className="text-blue-300">Collection:</span>{" "}
+                        <span className="text-white">
+                          {conversationContext.lastCollection}
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.conversationHistory.length > 0 && (
+                      <div className="text-xs bg-gray-800/50 rounded px-2 py-1 border border-gray-600">
+                        <span className="text-gray-300">History:</span>{" "}
+                        <span className="text-white">
+                          {conversationContext.conversationHistory.length} turns
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.currentTopic && (
+                      <div className="text-xs bg-green-900/30 rounded px-2 py-1 border border-green-700/50">
+                        <span className="text-green-300">Topic:</span>{" "}
+                        <span className="text-white">
+                          {conversationContext.currentTopic}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() =>
+                      setConversationContext({ conversationHistory: [] })
+                    }
+                    className="text-xs text-gray-400 hover:text-white mt-2 underline"
+                  >
+                    Clear Context
+                  </button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -578,8 +658,118 @@ export default function ChatInterface() {
                   ))}
                 </div>
               </div>
+
+              {/* Conversation Examples */}
+              <div>
+                <div className="text-xs font-medium mb-1 text-gray-300">
+                  Conversational:
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() =>
+                      handleExampleClick("Show me Chris Dyer's work")
+                    }
+                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                  >
+                    Show me Chris Dyer's work
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleExampleClick("How many items do they have?")
+                    }
+                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                  >
+                    How many items do they have?
+                    <span className="text-purple-400 ml-1">
+                      (after asking about an artist)
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleExampleClick("What about Alice?")}
+                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                  >
+                    What about Alice?
+                    <span className="text-purple-400 ml-1">
+                      (continuing conversation)
+                    </span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleExampleClick("Also show me their latest work")
+                    }
+                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                  >
+                    Also show me their latest work
+                    <span className="text-purple-400 ml-1">
+                      (using pronoun reference)
+                    </span>
+                  </button>
+                </div>
+              </div>
             </CardContent>
           </Card>
+
+          {/* Debug Panel */}
+          {(conversationContext.lastEntity ||
+            conversationContext.lastCollection ||
+            conversationContext.conversationHistory.length > 0) && (
+            <Card className="bg-gray-900 border-yellow-700">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-yellow-300 text-sm">
+                  🧠 Debug: Conversation Context
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {conversationContext.lastEntity && (
+                  <div className="text-xs">
+                    <span className="text-yellow-300">Last Entity:</span>{" "}
+                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      {conversationContext.lastEntity}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.lastCollection && (
+                  <div className="text-xs">
+                    <span className="text-yellow-300">Last Collection:</span>{" "}
+                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      {conversationContext.lastCollection}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.lastQueryType && (
+                  <div className="text-xs">
+                    <span className="text-yellow-300">Last Query:</span>{" "}
+                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      {conversationContext.lastQueryType}{" "}
+                      {conversationContext.lastTarget}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.currentTopic && (
+                  <div className="text-xs">
+                    <span className="text-yellow-300">Current Topic:</span>{" "}
+                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      {conversationContext.currentTopic}
+                    </span>
+                  </div>
+                )}
+                <div className="text-xs">
+                  <span className="text-yellow-300">History:</span>{" "}
+                  <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                    {conversationContext.conversationHistory.length} turns
+                  </span>
+                </div>
+                <button
+                  onClick={() =>
+                    setConversationContext({ conversationHistory: [] })
+                  }
+                  className="text-xs text-yellow-400 hover:text-white mt-2 underline"
+                >
+                  Clear Context
+                </button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Chat Interface */}

@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { client } from "./db";
 import { EmbeddingProvider } from "../schemas";
+import { ConversationContext, ConversationTurn } from "../types";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -31,32 +32,53 @@ export async function processNaturalQuery(
   collection: string | null, // Make collection optional
   question: string,
   provider: EmbeddingProvider = "openai",
-  model?: string // Add specific model parameter
+  model?: string, // Add specific model parameter
+  context?: ConversationContext // Add conversation context
 ): Promise<{
   answer: string;
   query_type: string;
   data?: any;
   execution_time_ms: number;
+  context: ConversationContext; // Return updated context
 }> {
   const startTime = Date.now();
 
   try {
-    // Step 1: Understand the intent using LLM
-    const intent = await parseQueryIntent(question, provider, model);
+    // Step 1: Resolve context and enrich the question
+    const { enrichedQuestion, resolvedCollection, updatedContext } =
+      await resolveContext(question, collection, context);
 
-    // Step 2: Use extracted collection name if available and no explicit collection provided
-    const finalCollection = collection || intent.extractedCollection || null;
+    // Step 2: Parse intent with context awareness
+    const intent = await parseQueryIntent(
+      enrichedQuestion,
+      provider,
+      model,
+      updatedContext
+    );
 
-    // Step 3: Execute the appropriate operation (database or collection level)
+    // Step 3: Use resolved collection or extracted collection
+    const finalCollection =
+      resolvedCollection || intent.extractedCollection || null;
+
+    // Step 4: Execute the appropriate operation
     const result = await executeQuery(finalCollection, intent);
 
-    // Step 4: Generate natural language response
+    // Step 5: Generate natural language response
     const answer = await generateResponse(
-      question,
+      enrichedQuestion,
       intent,
       result,
       provider,
       model
+    );
+
+    // Step 6: Update conversation context
+    const finalContext = updateConversationContext(
+      updatedContext,
+      question,
+      intent,
+      result,
+      finalCollection
     );
 
     const execution_time_ms = Date.now() - startTime;
@@ -66,84 +88,341 @@ export async function processNaturalQuery(
       query_type: intent.type,
       data: result,
       execution_time_ms,
+      context: finalContext,
     };
   } catch (error) {
     console.error("Error processing natural query:", error);
 
-    // Create fallback response even if everything fails
+    // Create fallback response
     const fallbackAnswer =
       "I encountered an issue processing your query, but I'm using pattern matching to help. " +
-      generateFallbackResponse(question, inferIntentFromQuestion(question), {
-        count: 0,
-      });
+      generateFallbackResponse(
+        question,
+        inferIntentFromQuestion(question, context),
+        {
+          count: 0,
+        }
+      );
 
     return {
       answer: fallbackAnswer,
       query_type: "fallback",
       data: null,
       execution_time_ms: Date.now() - startTime,
+      context: context || { conversationHistory: [] },
     };
   }
+}
+
+async function resolveContext(
+  question: string,
+  collection: string | null,
+  context?: ConversationContext
+): Promise<{
+  enrichedQuestion: string;
+  resolvedCollection: string | null;
+  updatedContext: ConversationContext;
+}> {
+  // Initialize context if not provided
+  const currentContext: ConversationContext = context || {
+    conversationHistory: [],
+  };
+
+  let enrichedQuestion = question;
+  let resolvedCollection = collection;
+
+  console.log("🧠 CONTEXT RESOLUTION:");
+  console.log("Original question:", question);
+  console.log("Current context:", JSON.stringify(currentContext, null, 2));
+
+  // Detect contextual references
+  const lowercaseQuestion = question.toLowerCase();
+
+  // Handle pronoun references to entities
+  if (
+    (lowercaseQuestion.includes("their") ||
+      lowercaseQuestion.includes("his") ||
+      lowercaseQuestion.includes("her") ||
+      lowercaseQuestion.includes("its")) &&
+    currentContext.lastEntity
+  ) {
+    console.log(
+      "🔄 Resolving possessive pronoun to:",
+      currentContext.lastEntity
+    );
+    enrichedQuestion = enrichedQuestion.replace(
+      /\b(their|his|her|its)\b/gi,
+      currentContext.lastEntity + "'s"
+    );
+  }
+
+  // Handle "he" and "him" references
+  if (
+    (lowercaseQuestion.includes("he ") ||
+      lowercaseQuestion.includes("him ") ||
+      lowercaseQuestion.includes(" he") ||
+      lowercaseQuestion.includes(" him")) &&
+    currentContext.lastEntity
+  ) {
+    console.log("🔄 Resolving 'he/him' to:", currentContext.lastEntity);
+    enrichedQuestion = enrichedQuestion.replace(
+      /\b(he|him)\b/gi,
+      currentContext.lastEntity
+    );
+  }
+
+  // Handle "also" references
+  if (lowercaseQuestion.includes("also") && currentContext.lastEntity) {
+    if (!enrichedQuestion.includes(currentContext.lastEntity)) {
+      console.log(
+        "🔄 Resolving 'also' reference to:",
+        currentContext.lastEntity
+      );
+      enrichedQuestion = enrichedQuestion.replace(
+        /also/i,
+        `also for ${currentContext.lastEntity}`
+      );
+    }
+  }
+
+  // Handle "them" references
+  if (lowercaseQuestion.includes("them") && currentContext.lastEntity) {
+    console.log("🔄 Resolving 'them' to:", currentContext.lastEntity);
+    enrichedQuestion = enrichedQuestion.replace(
+      /\bthem\b/gi,
+      currentContext.lastEntity
+    );
+  }
+
+  // Handle "they" references
+  if (lowercaseQuestion.includes("they") && currentContext.lastEntity) {
+    console.log("🔄 Resolving 'they' to:", currentContext.lastEntity);
+    enrichedQuestion = enrichedQuestion.replace(
+      /\bthey\b/gi,
+      currentContext.lastEntity
+    );
+  }
+
+  // Handle "it" references to collections
+  if (lowercaseQuestion.includes("it") && currentContext.lastCollection) {
+    console.log(
+      "🔄 Resolving 'it' to collection:",
+      currentContext.lastCollection
+    );
+    enrichedQuestion = enrichedQuestion.replace(
+      /\bit\b/gi,
+      currentContext.lastCollection
+    );
+  }
+
+  // Handle continuation phrases
+  if (
+    (lowercaseQuestion.includes("what about") ||
+      lowercaseQuestion.includes("how about") ||
+      lowercaseQuestion.includes("and")) &&
+    currentContext.lastQueryType &&
+    currentContext.lastTarget
+  ) {
+    // If question is like "what about John Doe?", expand to full context
+    const entityMatch = question.match(
+      /(?:what about|how about|and)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i
+    );
+    if (entityMatch) {
+      const newEntity = entityMatch[1];
+      const lastQueryType = currentContext.lastQueryType;
+      console.log(
+        "🔄 Resolving continuation to:",
+        `${lastQueryType} ${currentContext.lastTarget} by ${newEntity}`
+      );
+      enrichedQuestion = `${lastQueryType} ${currentContext.lastTarget} by ${newEntity}`;
+    }
+  }
+
+  // Resolve collection context
+  if (!resolvedCollection && currentContext.lastCollection) {
+    // If no collection specified but we have context, check if query seems collection-specific
+    if (
+      lowercaseQuestion.includes("this collection") ||
+      lowercaseQuestion.includes("same collection") ||
+      (!lowercaseQuestion.includes("all collections") &&
+        !lowercaseQuestion.includes("database"))
+    ) {
+      console.log(
+        "🔄 Resolving collection context to:",
+        currentContext.lastCollection
+      );
+      resolvedCollection = currentContext.lastCollection;
+    }
+  }
+
+  console.log("✅ Enriched question:", enrichedQuestion);
+  console.log("✅ Resolved collection:", resolvedCollection);
+
+  return {
+    enrichedQuestion,
+    resolvedCollection,
+    updatedContext: currentContext,
+  };
+}
+
+function updateConversationContext(
+  context: ConversationContext,
+  question: string,
+  intent: QueryIntent,
+  result: any,
+  collection: string | null
+): ConversationContext {
+  console.log("💾 UPDATING CONVERSATION CONTEXT:");
+  console.log("Previous context:", JSON.stringify(context, null, 2));
+  console.log("Intent:", JSON.stringify(intent, null, 2));
+  console.log("Collection:", collection);
+
+  // Create new conversation turn
+  const turn: ConversationTurn = {
+    id: Date.now().toString(),
+    question,
+    intent: {
+      type: intent.type,
+      target: intent.target,
+      filter: intent.filter,
+      scope: intent.scope,
+      extractedCollection: intent.extractedCollection,
+    },
+    result,
+    timestamp: new Date(),
+  };
+
+  // Update context
+  const updatedContext: ConversationContext = {
+    ...context,
+    conversationHistory: [...context.conversationHistory, turn].slice(-10), // Keep last 10 turns
+  };
+
+  // Update last entity if filter contains a name
+  if (intent.filter?.name) {
+    updatedContext.lastEntity = intent.filter.name;
+    console.log("📝 Updated lastEntity to:", intent.filter.name);
+  }
+
+  // Update last collection
+  if (collection) {
+    updatedContext.lastCollection = collection;
+    console.log("📝 Updated lastCollection to:", collection);
+  }
+
+  // Update last query type and target
+  updatedContext.lastQueryType = intent.type;
+  updatedContext.lastTarget = intent.target;
+  console.log("📝 Updated lastQueryType to:", intent.type);
+  console.log("📝 Updated lastTarget to:", intent.target);
+
+  // Update current topic based on query content
+  if (intent.filter?.name) {
+    updatedContext.currentTopic = `${intent.filter.name} ${intent.target}`;
+    console.log("📝 Updated currentTopic to:", updatedContext.currentTopic);
+  }
+
+  console.log(
+    "✅ Final updated context:",
+    JSON.stringify(updatedContext, null, 2)
+  );
+
+  return updatedContext;
 }
 
 async function parseQueryIntent(
   question: string,
   provider: EmbeddingProvider,
-  model?: string
+  model?: string,
+  context?: ConversationContext
 ): Promise<QueryIntent> {
   // First try simple pattern matching as fallback
-  const fallbackIntent = inferIntentFromQuestion(question);
+  const fallbackIntent = inferIntentFromQuestion(question, context);
 
-  // If we don't have API keys, use fallback
-  if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
-    console.log("No API keys available, using pattern matching fallback");
-    return fallbackIntent;
-  }
-
-  const systemPrompt = `You are an expert query analyzer for a vector database system containing image data with artist information. Parse the user's question and return a JSON object with the query intent.
-
-The system contains multiple collections, each with image data with these fields:
-- name (artist name)
-- file_name (image filename)
-- image_url (URL to image)
-- url (style URL)
-
-Available query types:
-- "count": count items (e.g., "how many images by Chris Dyer")
-- "search": find specific items (e.g., "find Chris Dyer images", "show me artwork by specific artist")
-- "list": list unique values (e.g., "list all artists")
-- "filter": filter by criteria (e.g., "images with .jpeg extension")
-- "describe": get general info (e.g., "describe this collection")
-- "summarize": provide detailed summary of specific subset (e.g., "summarize Chris Dyer's images")
-- "analyze": analyze or categorize specific artist's work
-- "collections": collection management (e.g., "what collections exist")
-- "database": database-level queries (e.g., "describe the database")
+  // Build context-aware system prompt
+  let systemPrompt = `You are a query intent parser for a vector database system. Parse the user's question to determine:
+1. Query type (count, search, list, filter, describe, summarize, analyze, collections, database)
+2. What to target (items, entities, collections, etc.)
+3. Any filters to apply (especially entity names)
+4. Query scope (collection-specific or database-wide)
+5. Collection name if mentioned
 
 Available scopes:
 - "collection": query operates on a specific collection
 - "database": query operates on the entire database
 
-IMPORTANT: If the user asks about a specific artist's work, images, or style:
-1. Set type to "search" or "summarize" (not just "describe")
-2. Extract the artist name in the filter
-3. Be specific about what they want to know
+IMPORTANT: Extract entity names from natural language variations:
+- "by [Name]", "from [Name]", "of [Name]"
+- "done by [Name]", "created by [Name]", "made by [Name]"
+- "pieces by [Name]", "work by [Name]", "items by [Name]"
+- "[Name] items", "[Name] work", "[Name] pieces"
+- Look for proper nouns (capitalized names) that could be entities
+
+When you find an entity name, put it in the filter with a generic field name "name".`;
+
+  // Add conversation context if available
+  if (context && context.conversationHistory.length > 0) {
+    systemPrompt += `
+
+CONVERSATION CONTEXT:
+Recent conversation history (use this to resolve references and continuations):
+`;
+
+    // Add last few turns for context
+    const recentTurns = context.conversationHistory.slice(-3);
+    recentTurns.forEach((turn, index) => {
+      systemPrompt += `
+${index + 1}. User asked: "${turn.question}"
+   Intent: ${turn.intent.type} ${turn.intent.target}${
+        turn.intent.filter
+          ? ` (filter: ${JSON.stringify(turn.intent.filter)})`
+          : ""
+      }
+   Collection: ${turn.intent.extractedCollection || "database-wide"}`;
+    });
+
+    if (context.lastEntity) {
+      systemPrompt += `
+Last mentioned entity: ${context.lastEntity}`;
+    }
+
+    if (context.lastCollection) {
+      systemPrompt += `
+Last used collection: ${context.lastCollection}`;
+    }
+
+    if (context.currentTopic) {
+      systemPrompt += `
+Current conversation topic: ${context.currentTopic}`;
+    }
+
+    systemPrompt += `
+
+Use this context to resolve pronouns (they, them, their, it), continuations (also, what about), and implied references.
+For example:
+- "their work" when last entity was "John Doe" should become filter: {"name": "John Doe"}
+- "what about Alice?" after asking about "John Doe's paintings" should become "search paintings by Alice"
+- "also show me Bob" after "count items by Alice" should become "search items by Bob"`;
+  }
+
+  systemPrompt += `
 
 Return ONLY a JSON object in this format:
 {
   "type": "count|search|list|filter|describe|summarize|analyze|collections|database",
-  "target": "what to count/search/list (e.g., 'images', 'artists', 'collections')",
-  "filter": {"field": "value"} or null,
+  "target": "what to count/search/list (e.g., 'items', 'entities', 'collections')",
+  "filter": {"name": "extracted_entity_name"} or null,
   "limit": number or null,
   "scope": "collection|database",
   "extractedCollection": "collection_name_if_mentioned_in_query" or null
 }
 
 Examples:
-- "How many images by Chris Dyer?" → {"type": "count", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": null, "scope": "database", "extractedCollection": null}
-- "Summarize Chris Dyer's images in midjourneysample" → {"type": "summarize", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "collection", "extractedCollection": "midjourneysample"}
-- "Give me a summary of the images by Chris Dyer" → {"type": "summarize", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 10, "scope": "database", "extractedCollection": null}
-- "Find all Chris Dyer artwork" → {"type": "search", "target": "images", "filter": {"name": "Chris Dyer"}, "limit": 20, "scope": "database", "extractedCollection": null}
-- "Show me Peter Paul Rubens images in midjourneysample" → {"type": "search", "target": "images", "filter": {"name": "Peter Paul Rubens"}, "limit": 10, "scope": "collection", "extractedCollection": "midjourneysample"}`;
+- "How many items by John Doe?" → {"type": "count", "target": "items", "filter": {"name": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
+- "Summarize Alice Smith's work in mycollection" → {"type": "summarize", "target": "items", "filter": {"name": "Alice Smith"}, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
+- "Can you summarise the pieces done by Bob Johnson?" → {"type": "summarize", "target": "items", "filter": {"name": "Bob Johnson"}, "limit": 10, "scope": "database", "extractedCollection": null}
+- "Find all Maria Garcia artwork" → {"type": "search", "target": "items", "filter": {"name": "Maria Garcia"}, "limit": 20, "scope": "database", "extractedCollection": null}
+- "Show me data created by AI Assistant" → {"type": "search", "target": "items", "filter": {"name": "AI Assistant"}, "limit": 10, "scope": "database", "extractedCollection": null}`;
 
   try {
     let response: string;
@@ -158,15 +437,35 @@ Examples:
       ]);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
-      const completion = await openai.chat.completions.create({
-        model: model || "gpt-3.5-turbo", // Use specific model parameter
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Question: "${question}"` },
-        ],
-        temperature: 0,
-      });
-      response = completion.choices[0].message.content || "{}";
+      try {
+        const completion = await openai.chat.completions.create({
+          model: model || "gpt-3.5-turbo", // Use specific model parameter
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Question: "${question}"` },
+          ],
+          temperature: 0,
+        });
+        response = completion.choices[0].message.content || "{}";
+      } catch (openaiError: any) {
+        console.warn(
+          "OpenAI failed, trying Gemini fallback:",
+          openaiError.message
+        );
+        // Auto-fallback to Gemini if OpenAI fails
+        if (process.env.GEMINI_API_KEY) {
+          const geminiModel = genAI.getGenerativeModel({
+            model: "gemini-2.0-flash",
+          });
+          const result = await geminiModel.generateContent([
+            { text: systemPrompt },
+            { text: `Question: "${question}"` },
+          ]);
+          response = result.response.text();
+        } else {
+          throw openaiError; // Re-throw if no Gemini fallback available
+        }
+      }
     } else {
       throw new Error("No valid API key for the specified provider");
     }
@@ -176,27 +475,73 @@ Examples:
     const jsonStr = jsonMatch ? jsonMatch[0] : response;
     return JSON.parse(jsonStr);
   } catch (e) {
-    // Fallback parsing
-    console.warn("Failed to parse LLM response, using fallback:", e);
+    // Fallback parsing with context awareness
+    console.warn(
+      "Failed to parse LLM response, using context-aware fallback:",
+      e
+    );
     return fallbackIntent;
   }
 }
 
-function inferIntentFromQuestion(question: string): QueryIntent {
+function inferIntentFromQuestion(
+  question: string,
+  context?: ConversationContext
+): QueryIntent {
   const q = question.toLowerCase();
 
   // Try to extract collection name from the question
   const extractedCollection = extractCollectionFromQuestion(question);
 
-  // Check for artist-specific queries first - fixed regex with lookahead
-  const artistMatch =
-    question.match(
-      /artist\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+  // Handle pronouns in fallback if context is available
+  let processedQuestion = question;
+  if (context?.lastEntity) {
+    // Handle pronouns using context
+    if (
+      q.includes(" he ") ||
+      q.includes(" him ") ||
+      q.includes("he ") ||
+      q.includes("him ")
+    ) {
+      console.log("🔄 FALLBACK: Resolving 'he/him' to:", context.lastEntity);
+      processedQuestion = processedQuestion.replace(
+        /\b(he|him)\b/gi,
+        context.lastEntity
+      );
+    }
+    if (
+      q.includes(" they ") ||
+      q.includes(" them ") ||
+      q.includes("they ") ||
+      q.includes("them ")
+    ) {
+      console.log("🔄 FALLBACK: Resolving 'they/them' to:", context.lastEntity);
+      processedQuestion = processedQuestion.replace(
+        /\b(they|them)\b/gi,
+        context.lastEntity
+      );
+    }
+    if (q.includes(" their ") || q.includes(" his ") || q.includes(" her ")) {
+      console.log("🔄 FALLBACK: Resolving possessive to:", context.lastEntity);
+      processedQuestion = processedQuestion.replace(
+        /\b(their|his|her)\b/gi,
+        context.lastEntity + "'s"
+      );
+    }
+  }
+
+  // Check for entity-specific queries with generic patterns (use processed question)
+  const entityMatch =
+    processedQuestion.match(
+      /(?:by|from|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
     ) ||
-    question.match(
-      /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+    processedQuestion.match(
+      /(?:done\s+by|created\s+by|made\s+by|work\s+by|items\s+by|pieces\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+    ) ||
+    processedQuestion.match(
+      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s+(?:work|items|pieces|data|content))/i
     );
-  const artistName = artistMatch ? artistMatch[1].trim() : null;
+  const entityName = entityMatch ? entityMatch[1].trim() : null;
 
   // Database-level queries
   if (q.includes("collections") || q.includes("database")) {
@@ -211,19 +556,20 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     }
   }
 
-  // Artist-specific queries (high priority)
-  if (artistName) {
-    const filter = { name: artistName };
+  // Entity-specific queries (high priority)
+  if (entityName) {
+    const filter = { name: entityName };
     const scope = extractedCollection ? "collection" : "database";
 
     if (
       q.includes("summary") ||
       q.includes("summarize") ||
+      q.includes("summarise") ||
       (q.includes("give me") && q.includes("summary"))
     ) {
       return {
         type: "summarize",
-        target: "images",
+        target: "items",
         filter,
         limit: 20,
         scope,
@@ -234,7 +580,7 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     if (q.includes("how many") || q.includes("count")) {
       return {
         type: "count",
-        target: "images",
+        target: "items",
         filter,
         scope,
         ...(extractedCollection && { extractedCollection }),
@@ -244,7 +590,7 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     if (q.includes("find") || q.includes("search") || q.includes("show")) {
       return {
         type: "search",
-        target: "images",
+        target: "items",
         filter,
         limit: 10,
         scope,
@@ -255,7 +601,7 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     if (q.includes("analyze") || q.includes("analysis")) {
       return {
         type: "analyze",
-        target: "images",
+        target: "items",
         filter,
         limit: 50,
         scope,
@@ -266,15 +612,19 @@ function inferIntentFromQuestion(question: string): QueryIntent {
 
   // Collection-level queries (existing logic)
   if (q.includes("how many") || q.includes("count")) {
-    if (q.includes("artist")) {
+    if (
+      q.includes("entities") ||
+      q.includes("names") ||
+      q.includes("creators")
+    ) {
       return {
         type: "count",
-        target: "artists",
+        target: "entities",
         scope: extractedCollection ? "collection" : "database",
         ...(extractedCollection && { extractedCollection }),
       };
     }
-    if (q.includes("vector") || q.includes("image") || q.includes("item")) {
+    if (q.includes("vector") || q.includes("item") || q.includes("record")) {
       return {
         type: "count",
         target: "total",
@@ -299,15 +649,19 @@ function inferIntentFromQuestion(question: string): QueryIntent {
         ? "collection"
         : "database";
 
-    // Try to extract artist name (fallback pattern) - fixed with lookahead
-    const fallbackArtistMatch = question.match(
-      /(?:by|from|of)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
-    );
-    if (fallbackArtistMatch) {
+    // Try to extract entity name (fallback pattern) - generic patterns
+    const fallbackEntityMatch =
+      question.match(
+        /(?:by|from|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+      ) ||
+      question.match(
+        /(?:done\s+by|created\s+by|made\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
+      );
+    if (fallbackEntityMatch) {
       return {
         type: "search",
-        target: "images",
-        filter: { name: fallbackArtistMatch[1] },
+        target: "items",
+        filter: { name: fallbackEntityMatch[1] },
         limit: 10,
         scope,
         ...(extractedCollection && { extractedCollection }),
@@ -315,7 +669,7 @@ function inferIntentFromQuestion(question: string): QueryIntent {
     }
     return {
       type: "search",
-      target: "images",
+      target: "items",
       limit: 10,
       scope,
       ...(extractedCollection && { extractedCollection }),
@@ -323,17 +677,21 @@ function inferIntentFromQuestion(question: string): QueryIntent {
   }
 
   if (q.includes("list") || q.includes("show")) {
-    if (q.includes("artist")) {
+    if (
+      q.includes("entities") ||
+      q.includes("names") ||
+      q.includes("creators")
+    ) {
       return {
         type: "list",
-        target: "artists",
+        target: "entities",
         scope: extractedCollection ? "collection" : "database",
         ...(extractedCollection && { extractedCollection }),
       };
     }
     return {
       type: "list",
-      target: "images",
+      target: "items",
       limit: 20,
       scope: extractedCollection ? "collection" : "database",
       ...(extractedCollection && { extractedCollection }),
@@ -442,13 +800,17 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
       if (intent.target === "artists") {
         return await countArtistsAcrossDatabase();
       }
-      if (intent.target === "images" && intent.filter) {
+      if (
+        (intent.target === "images" || intent.target === "items") &&
+        intent.filter
+      ) {
         return await countImagesByArtistAcrossDatabase(intent.filter);
       }
       if (intent.target === "total") {
         return await countTotalVectorsAcrossDatabase();
       }
-      break;
+      // Fallback for count operations
+      return await countTotalVectorsAcrossDatabase();
 
     case "collections":
       return await listCollections();
@@ -482,6 +844,10 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
         `Database-level query type '${intent.type}' not implemented yet`
       );
   }
+
+  throw new Error(
+    `Database-level query could not be executed: ${intent.type} ${intent.target}`
+  );
 }
 
 async function executeCollectionQuery(
@@ -492,7 +858,10 @@ async function executeCollectionQuery(
     case "count":
       if (intent.target === "artists") {
         return await countUniqueArtists(collection);
-      } else if (intent.target === "images" && intent.filter) {
+      } else if (
+        (intent.target === "images" || intent.target === "items") &&
+        intent.filter
+      ) {
         return await countImagesByArtist(collection, intent.filter);
       } else {
         return await countTotal(collection);
@@ -766,13 +1135,30 @@ Provide a concise, natural language response that directly answers the user's qu
       const result = await geminiModel.generateContent(systemPrompt);
       response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
-      const completion = await openai.chat.completions.create({
-        model: model || "gpt-3.5-turbo", // Use specific model parameter
-        messages: [{ role: "system", content: systemPrompt }],
-        temperature: 0.3,
-        max_tokens: 200,
-      });
-      response = completion.choices[0].message.content || fallbackResponse;
+      try {
+        const completion = await openai.chat.completions.create({
+          model: model || "gpt-3.5-turbo", // Use specific model parameter
+          messages: [{ role: "system", content: systemPrompt }],
+          temperature: 0.3,
+          max_tokens: 200,
+        });
+        response = completion.choices[0].message.content || fallbackResponse;
+      } catch (openaiError: any) {
+        console.warn(
+          "OpenAI failed in generateResponse, trying Gemini fallback:",
+          openaiError.message
+        );
+        // Auto-fallback to Gemini if OpenAI fails
+        if (process.env.GEMINI_API_KEY) {
+          const geminiModel = genAI.getGenerativeModel({
+            model: "gemini-2.0-flash",
+          });
+          const result = await geminiModel.generateContent(systemPrompt);
+          response = result.response.text();
+        } else {
+          throw openaiError; // Re-throw if no Gemini fallback available
+        }
+      }
     } else {
       return fallbackResponse;
     }
@@ -789,27 +1175,30 @@ function generateFallbackResponse(
   intent: QueryIntent,
   data: any
 ): string {
+  // Safely handle null/undefined data
+  const safeData = data || {};
+
   if (intent.scope === "database") {
     switch (intent.type) {
       case "count":
         if (intent.target === "collections") {
-          return `I found ${data.count || 0} collections in the database: ${
-            data.collections?.join(", ") || "None found"
+          return `I found ${safeData.count || 0} collections in the database: ${
+            safeData.collections?.join(", ") || "None found"
           }.`;
         }
         if (intent.target === "artists") {
           return `I found ${
-            data.count || 0
+            safeData.count || 0
           } unique artists across all collections. Some of them include: ${
-            data.artists?.slice(0, 5).join(", ") || "No artists found"
+            safeData.artists?.slice(0, 5).join(", ") || "No artists found"
           }.`;
         }
         if (intent.target === "images" && intent.filter?.name) {
-          return `I found ${data.count || 0} images by ${
-            data.artist
+          return `I found ${safeData.count || 0} images by ${
+            safeData.artist || intent.filter.name
           } across all collections. ${
-            data.by_collection?.length > 0
-              ? `Found in: ${data.by_collection
+            safeData.by_collection?.length > 0
+              ? `Found in: ${safeData.by_collection
                   .map((c: any) => `${c.collection} (${c.count})`)
                   .join(", ")}.`
               : ""
@@ -817,44 +1206,44 @@ function generateFallbackResponse(
         }
         if (intent.target === "total") {
           return `The database contains ${
-            data.count || 0
+            safeData.count || 0
           } total vectors across all collections.`;
         }
         break;
       case "collections":
         return `The database contains ${
-          data.collections?.length || 0
+          safeData.collections?.length || 0
         } collections: ${
-          data.collections
+          safeData.collections
             ?.map((c: any) => `${c.name} (${c.vectors_count || 0} vectors)`)
             .join(", ") || "None found"
         }.`;
       case "database":
         return `The database contains ${
-          data.total_collections || 0
-        } collections with a total of ${data.total_vectors || 0} vectors.`;
+          safeData.total_collections || 0
+        } collections with a total of ${safeData.total_vectors || 0} vectors.`;
       case "search":
         return `I searched across ${
-          data.collections_searched || 0
-        } collections and found ${data.total_count || 0} matching items.`;
+          safeData.collections_searched || 0
+        } collections and found ${safeData.total_count || 0} matching items.`;
       case "summarize":
         if (intent.filter?.name) {
           return (
-            `**Summary of ${data.artist}'s work across the database:**\n\n` +
-            `• **Total Images**: ${data.total_images || 0}\n` +
-            `• **Collections**: Found in ${
-              data.collections_found || 0
+            `Summary of ${
+              safeData.artist || intent.filter.name
+            }'s work across the database:\n\n` +
+            `Total Images: ${safeData.total_images || 0}\n` +
+            `Collections: Found in ${
+              safeData.collections_found || 0
             } collections\n` +
-            `• **File Types**: ${
-              data.file_types?.join(", ") || "Various"
-            }\n\n` +
-            `**Breakdown by collection:**\n${
-              data.by_collection
+            `File Types: ${safeData.file_types?.join(", ") || "Various"}\n\n` +
+            `Breakdown by collection:\n${
+              safeData.by_collection
                 ?.map((c: any) => `• ${c.collection}: ${c.image_count} images`)
                 .join("\n") || "No collections found"
             }\n\n` +
-            `**Sample Images**: ${
-              data.sample_images
+            `Sample Images: ${
+              safeData.sample_images
                 ?.slice(0, 3)
                 .map((img: any) => `${img.filename} (${img.collection})`)
                 .join(", ") || "None found"
@@ -865,9 +1254,9 @@ function generateFallbackResponse(
       case "list":
         if (intent.target === "artists") {
           return `I found ${
-            data.artists?.length || 0
+            safeData.artists?.length || 0
           } unique artists across all collections: ${
-            data.artists?.slice(0, 10).join(", ") || "No artists found"
+            safeData.artists?.slice(0, 10).join(", ") || "No artists found"
           }.`;
         }
         break;
@@ -879,40 +1268,42 @@ function generateFallbackResponse(
     case "count":
       if (intent.target === "artists") {
         return `I found ${
-          data.count || 0
+          safeData.count || 0
         } unique artists in the collection. Some of them include: ${
-          data.artists?.slice(0, 5).join(", ") || "No artists found"
+          safeData.artists?.slice(0, 5).join(", ") || "No artists found"
         }.`;
       } else if (intent.target === "images" && intent.filter?.name) {
-        return `I found ${data.count || 0} images by ${
-          data.artist
+        return `I found ${safeData.count || 0} images by ${
+          safeData.artist || intent.filter.name
         } in this collection.${
-          data.sample_images?.length > 0
-            ? ` Sample files: ${data.sample_images
+          safeData.sample_images?.length > 0
+            ? ` Sample files: ${safeData.sample_images
                 .slice(0, 3)
                 .map((img: any) => img.filename)
                 .join(", ")}.`
             : ""
         }`;
       } else {
-        return `The collection contains ${data.count || 0} total images.`;
+        return `The collection contains ${safeData.count || 0} total images.`;
       }
 
     case "search":
     case "filter":
-      return `I found ${data.count || 0} images matching your criteria.`;
+      return `I found ${safeData.count || 0} images matching your criteria.`;
 
     case "summarize":
       if (intent.filter?.name) {
         return (
-          `**Summary of ${data.artist}'s work in this collection:**\n\n` +
-          `• **Total Images**: ${data.total_images || 0}\n` +
-          `• **File Types**: ${data.file_types?.join(", ") || "Various"}\n` +
-          `• **Sample Files**: ${
-            data.sample_filenames?.slice(0, 5).join(", ") || "None"
+          `Summary of ${
+            safeData.artist || intent.filter.name
+          }'s work in this collection:\n\n` +
+          `Total Images: ${safeData.total_images || 0}\n` +
+          `File Types: ${safeData.file_types?.join(", ") || "Various"}\n` +
+          `Sample Files: ${
+            safeData.sample_filenames?.slice(0, 5).join(", ") || "None"
           }\n\n` +
-          `**Image Details:**\n${
-            data.images
+          `Image Details:\n${
+            safeData.images
               ?.slice(0, 5)
               .map(
                 (img: any, i: number) =>
@@ -927,21 +1318,23 @@ function generateFallbackResponse(
     case "analyze":
       if (intent.filter?.name) {
         return (
-          `**Analysis of ${data.artist}'s work patterns:**\n\n` +
-          `• **Total Images**: ${data.total_images || 0}\n` +
-          `• **File Types**: ${
-            Object.entries(data.file_type_distribution || {})
+          `Analysis of ${
+            safeData.artist || intent.filter.name
+          }'s work patterns:\n\n` +
+          `Total Images: ${safeData.total_images || 0}\n` +
+          `File Types: ${
+            Object.entries(safeData.file_type_distribution || {})
               .map(([type, count]) => `${type} (${count})`)
               .join(", ") || "Various"
           }\n` +
-          `• **Common Patterns**: ${
-            Object.entries(data.common_naming_patterns || {})
+          `Common Patterns: ${
+            Object.entries(safeData.common_naming_patterns || {})
               .slice(0, 3)
               .map(([pattern, count]) => `"${pattern}" (${count} files)`)
               .join(", ") || "No patterns found"
           }\n` +
-          `• **Source Domains**: ${
-            Object.keys(data.source_domains || {}).join(", ") || "Various"
+          `Source Domains: ${
+            Object.keys(safeData.source_domains || {}).join(", ") || "Various"
           }`
         );
       }
@@ -950,17 +1343,19 @@ function generateFallbackResponse(
     case "list":
       if (intent.target === "artists") {
         return `Here are the artists in the collection: ${
-          data.artists?.slice(0, 10).join(", ") || "No artists found"
-        }${data.artists?.length > 10 ? "..." : ""}.`;
+          safeData.artists?.slice(0, 10).join(", ") || "No artists found"
+        }${safeData.artists?.length > 10 ? "..." : ""}.`;
       } else {
-        return `I found ${data.count || 0} items in the collection.`;
+        return `I found ${safeData.count || 0} items in the collection.`;
       }
 
     case "describe":
-      return `This collection contains ${data.total_images || 0} images from ${
-        data.unique_artists || 0
+      return `This collection contains ${
+        safeData.total_images || 0
+      } images from ${
+        safeData.unique_artists || 0
       } unique artists. Some featured artists include: ${
-        data.sample_artists?.slice(0, 5).join(", ") || "No artists found"
+        safeData.sample_artists?.slice(0, 5).join(", ") || "No artists found"
       }.`;
 
     default:
