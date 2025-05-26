@@ -1,32 +1,36 @@
-# Yearn - Natural Language Query Interface
+# Yearn
 
-A natural language interface for vector databases that allows you to ask questions about your data in plain English.
+A natural language interface for vector databases. Works on the browser. Query your data in plain English and get context-aware, conversational answers.
 
 ## Features
 
-- **Natural Language Queries**: Ask questions like "How many artists are in my collection?" or "Show me work by Chris Dyer"
-- **Context-Aware Conversations**: The system remembers previous queries and can handle follow-up questions
-- **Multiple AI Models**: Support for OpenAI GPT and Google Gemini models
-- **Configurable Database Schema**: Works with different types of vector databases beyond just images/artists
-- **Real-time Markdown Rendering**: Properly formatted responses with markdown support
-- **Full-Screen Interface**: Optimized for productivity with a clean, full-screen layout
-
-## Database Configuration
-
-The system is designed to work with different types of vector databases. You can configure it for your specific use case by setting environment variables:
+- _Natural Language Queries_: Ask questions about your data using everyday language.
+- _Conversational Context_: The system remembers previous queries for follow-ups.
+- _Multiple AI Models_: Supports OpenAI GPT and Google Gemini.
+- _Flexible Schema_: Works with any vector database schema.
+- _Markdown Rendering_: Answers are formatted for easy reading.
+- _Modern UI_: Clean, full-screen interface.
 
 ### Environment Variables
 
-```bash
-# Entity Configuration
-ENTITY_FIELD=name              # Field containing the main entity identifier (default: "name")
-ENTITY_TYPE=artists            # What to call entities in responses (default: "artists")
-ITEM_TYPE=images              # What to call individual items (default: "images")
+Set these in your .env file (see `env.example`):
 
-# Additional Fields (optional)
-FILENAME_FIELD=file_name      # Field for file names (default: "file_name")
-URL_FIELD=image_url          # Field for URLs (default: "image_url")
-DESCRIPTION_FIELD=description # Field for descriptions (default: "description")
+```bash
+QDRANT_URL=...
+QDRANT_API_KEY=...
+OPENAI_API_KEY=...
+GEMINI_API_KEY=...
+```
+
+For custom data schemas, you can optionally set:
+
+```bash
+ENTITY_FIELD=         # Main entity field (default: "name")
+ENTITY_TYPE=          # Plural label for entities (default: "entities")
+ITEM_TYPE=            # Label for individual items (default: "items")
+FILENAME_FIELD=       # Field for file names (default: "file_name")
+URL_FIELD=            # Field for URLs (default: "item_url")
+DESCRIPTION_FIELD=    # Field for descriptions (default: "description")
 ```
 
 ### Example Configurations
@@ -69,7 +73,7 @@ DESCRIPTION_FIELD=abstract
 1. **Clone the repository**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/effieklimi/yearn.git
    cd yearn
    ```
 
@@ -83,15 +87,12 @@ DESCRIPTION_FIELD=abstract
 
    ```bash
    cp env.example .env
-   # Edit .env with your API keys and database configuration
+   # Edit .env with your API keys and database details
+   # Set up Qdrant connection details
+   # Optional: Configure field mappings for your data schema as described above
    ```
 
-4. **Configure your vector database**
-
-   - Set up Qdrant connection details
-   - Configure field mappings for your data schema
-
-5. **Run the development server**
+4. **Run the development server**
    ```bash
    npm run dev
    ```
@@ -100,21 +101,14 @@ DESCRIPTION_FIELD=abstract
 
 ### Basic Queries
 
-- "How many [entities] are in my database?"
-- "List some [entities] from [collection]"
-- "Find [items] by [entity name]"
-- "Describe my database"
-
-### Advanced Queries
-
-- "Which [entity] has the most [items]?"
-- "Show me the top 5 [entities] by [item] count"
-- "Analyze [entity name]'s work patterns"
-
-### Conversational Queries
-
-- "Show me Chris Dyer's work" → "How many items do they have?" → "What about Alice?"
-- The system maintains context and can resolve pronouns and references
+- Ask questions like:
+  - "How many [entities] are in my database?"
+  - "List some [entities] from [collection]"
+  - "Find [items] by [entity name]"
+  - "Which [entity] has the most [items]?"
+  - "Show me the top 5 [entities] by [item] count"
+  - "Describe my database"
+- The system supports follow-up and context-aware queries.
 
 ## API Endpoints
 
@@ -126,7 +120,7 @@ Query the vector database using natural language.
 
 ```json
 {
-  "question": "How many artists are in my collection?",
+  "question": "Your question here",
   "collection": "optional_collection_name",
   "model": "gpt-4o-mini",
   "context": {
@@ -154,8 +148,8 @@ Query the vector database using natural language.
 - **Frontend**: Next.js with TypeScript and Tailwind CSS
 - **Backend**: Next.js API routes
 - **Vector Database**: Qdrant
-- **AI Models**: OpenAI GPT and Google Gemini
-- **Natural Language Processing**: Custom intent parsing with LLM fallback
+- **AI**: OpenAI GPT and Google Gemini
+-
 
 ## Contributing
 
@@ -171,4 +165,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Built with ❤️ using Next.js, Qdrant, and modern web technologies.**
+**Built with ❤️ in London.**
