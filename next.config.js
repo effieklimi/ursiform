@@ -4,8 +4,6 @@ const nextConfig = {
   swcMinify: false,
   // Enable standalone output for Docker
   output: "standalone",
-  // Support for pages directory
-  pageExtensions: ["ts", "tsx", "js", "jsx"],
   // Environment variables available to the client
   env: {
     QDRANT_URL: process.env.QDRANT_URL,
