@@ -59,7 +59,8 @@ interface QueryIntent {
     | "summarize"
     | "analyze"
     | "top"
-    | "ranking"; // Add new query types for complex queries
+    | "ranking"
+    | "aggregate"; // Add new query types for complex queries
   target: string; // what to count/search/list
   filter?: any; // any filters to apply
   limit?: number;
@@ -67,6 +68,8 @@ interface QueryIntent {
   extractedCollection?: string; // new: collection name extracted from query text
   sortBy?: string; // new: what to sort by (e.g., "image_count", "popularity")
   sortOrder?: "asc" | "desc"; // new: sort order
+  aggregationFunction?: "sum" | "average" | "min" | "max"; // For type "aggregate"
+  aggregationField?: string; // For type "aggregate"
 }
 
 export async function processNaturalQuery(
@@ -425,45 +428,69 @@ async function parseQueryIntent(
 
   // Build context-aware system prompt
   let systemPrompt = `You are a query intent parser for a vector database system. Parse the user's question to determine:
-1. Query type (count, search, list, filter, describe, summarize, analyze, collections, database, top, ranking)
-2. What to target (items, entities, collections, etc.)
-3. Any filters to apply (especially entity names)
+1. Query type (count, search, list, filter, describe, summarize, analyze, collections, database, top, ranking, aggregate)
+2. What to target (items, entities, collections, or a specific field for aggregation)
+3. Filters to apply: an object where keys are field names and values are filter values, or an array of such objects for AND conditions. Include operators if specified (e.g., contains, greaterThan).
 4. Query scope (collection-specific or database-wide)
 5. Collection name if mentioned
 6. Sort criteria for ranking queries
+7. For aggregation: the aggregation function (average, sum, min, max) and the target field.
 
 Available collections in this database: ${availableCollections.join(", ")}
+Configuration for entity and item types (use these to understand user intent):
+- Entity Field (identifier for entities, e.g., a name or ID): ${
+    DEFAULT_CONFIG.entityField
+  }
+- Entity Type (what entities are called, e.g., artists, authors): ${
+    DEFAULT_CONFIG.entityType
+  }
+- Item Type (what individual records are called, e.g., images, documents): ${
+    DEFAULT_CONFIG.itemType
+  }
+- Available additional item fields: ${Object.keys(
+    DEFAULT_CONFIG.additionalFields || {}
+  ).join(", ")}
 
 IMPORTANT: When parsing the query, check if mentioned names are collection names first before treating them as entity names.
 - If a name matches a collection name, set "extractedCollection" and "scope" to "collection"
-- If a name doesn't match any collection, treat it as an entity name in the filter
+- If a name doesn't match any collection, and it seems to be an identifier for an entity (based on context or phrasing like "by [Name]"), use '${
+    DEFAULT_CONFIG.entityField
+  }' as the key in the filter object. E.g., filter: {"${
+    DEFAULT_CONFIG.entityField
+  }": "[Name]"}
 
 Available scopes:
 - "collection": query operates on a specific collection
 - "database": query operates on the entire database
 
 Available query types:
-- "top": find top N items by some criteria (e.g., "top 5 artists by image count")
-- "ranking": rank items by some criteria (e.g., "which artist has the most images")
-- "count": count items matching criteria
-- "search": find specific items
+- "top": find top N items or entities by some criteria
+- "ranking": rank items or entities by some criteria
+- "count": count items/entities matching criteria
+- "search": find specific items/entities
 - "list": list items or entities
-- "summarize": provide summary of items
-- "analyze": analyze patterns in items
+- "summarize": provide summary of items/entities
+- "analyze": analyze patterns in items/entities
+- "aggregate": perform an aggregation (sum, average, min, max) on a numeric field of items.
 
-IMPORTANT: Extract entity names from natural language variations:
-- "by [Name]", "from [Name]", "of [Name]"
-- "done by [Name]", "created by [Name]", "made by [Name]"
-- "pieces by [Name]", "work by [Name]", "items by [Name]"
-- "[Name] items", "[Name] work", "[Name] pieces"
-- Look for proper nouns (capitalized names) that could be entities
+IMPORTANT: Extract filter conditions from natural language:
+- "by [Name]", "from [Name]", "of [Name]" → {"${
+    DEFAULT_CONFIG.entityField
+  }": "[Name]"}
+- "[property] is [value]" → {"[property]": "[value]"}
+- "[property] contains [value]" → {"[property]": {"contains": "[value]"}} (or adapt based on backend capabilities)
+- "[property] greater than [value]" → {"[property]": {"gt": value}}
+- "[property] less than [value]" → {"[property]": {"lt": value}}
+- For multiple conditions like "X and Y", represent the filter as an array of objects: [{"fieldA": "valueA"}, {"fieldB": "valueB"}]
 
-For ranking/top queries, identify what to sort by:
-- "most images" → sortBy: "image_count", sortOrder: "desc"
-- "least popular" → sortBy: "popularity", sortOrder: "asc"
-- "top artists" → sortBy: "image_count", sortOrder: "desc"
+For ranking/top queries, identify what to sort by (e.g., "${
+    DEFAULT_CONFIG.itemType
+  }_count", "popularity", or a specific field name).
 
-When you find an entity name, put it in the filter with a generic field name "name".`;
+When you find an entity name used as a filter, use '${
+    DEFAULT_CONFIG.entityField
+  }' as the filter key.
+`;
 
   // Add conversation context if available
   if (context && context.conversationHistory.length > 0) {
@@ -514,25 +541,27 @@ For example:
 
 Return ONLY a JSON object in this format:
 {
-  "type": "count|search|list|filter|describe|summarize|analyze|collections|database|top|ranking",
-  "target": "what to count/search/list (e.g., 'items', 'entities', 'collections')",
-  "filter": {"name": "extracted_entity_name"} or null,
+  "type": "count|search|list|filter|describe|summarize|analyze|collections|database|top|ranking|aggregate",
+  "target": "what to count/search/list/aggregate (e.g., 'items', 'entities', 'collections', or a specific numeric field for aggregation like 'price')",
+  "filter": {"[field_name]": "[value]"} or [{"[field_A]": "value_A"}, {"[field_B]": "value_B"}] or null, // Can be an object for single filter or array for AND conditions
   "limit": number or null,
   "scope": "collection|database",
   "extractedCollection": "collection_name_if_mentioned_in_query" or null,
-  "sortBy": "image_count|popularity|name" or null,
-  "sortOrder": "asc|desc" or null
+  "sortBy": "${DEFAULT_CONFIG.itemType}_count|popularity|name|field_name" or null,
+  "sortOrder": "asc|desc" or null,
+  "aggregationFunction": "sum|average|min|max" or null, // For type "aggregate"
+  "aggregationField": "field_name_to_aggregate_on" or null // For type "aggregate"
 }
 
 Examples:
-- "How many items by John Doe?" → {"type": "count", "target": "items", "filter": {"name": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
-- "Which artist has the most images?" → {"type": "ranking", "target": "entities", "filter": null, "limit": 1, "scope": "database", "extractedCollection": null, "sortBy": "image_count", "sortOrder": "desc"}
-- "Top 5 artists by image count in mycollection" → {"type": "top", "target": "entities", "filter": null, "limit": 5, "scope": "collection", "extractedCollection": "mycollection", "sortBy": "image_count", "sortOrder": "desc"}
-- "Which artist in that collection has the most images?" → {"type": "ranking", "target": "entities", "filter": null, "limit": 1, "scope": "collection", "extractedCollection": null, "sortBy": "image_count", "sortOrder": "desc"}
-- "Summarize Alice Smith's work in mycollection" → {"type": "summarize", "target": "items", "filter": {"name": "Alice Smith"}, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
-- "Can you summarise the pieces done by Bob Johnson?" → {"type": "summarize", "target": "items", "filter": {"name": "Bob Johnson"}, "limit": 10, "scope": "database", "extractedCollection": null}
-- "Find all Maria Garcia artwork" → {"type": "search", "target": "items", "filter": {"name": "Maria Garcia"}, "limit": 20, "scope": "database", "extractedCollection": null}
-- "Show me data created by AI Assistant" → {"type": "search", "target": "items", "filter": {"name": "AI Assistant"}, "limit": 10, "scope": "database", "extractedCollection": null}`;
+- "How many ${DEFAULT_CONFIG.itemType} by John Doe?" → {"type": "count", "target": "${DEFAULT_CONFIG.itemType}", "filter": {"${DEFAULT_CONFIG.entityField}": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
+- "Which ${DEFAULT_CONFIG.entityType} has the most ${DEFAULT_CONFIG.itemType}?" → {"type": "ranking", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 1, "scope": "database", "extractedCollection": null, "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
+- "Top 5 ${DEFAULT_CONFIG.entityType} by ${DEFAULT_CONFIG.itemType}_count in mycollection" → {"type": "top", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 5, "scope": "collection", "extractedCollection": "mycollection", "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
+- "Summarize Alice Smith's work in mycollection" → {"type": "summarize", "target": "${DEFAULT_CONFIG.itemType}", "filter": {"${DEFAULT_CONFIG.entityField}": "Alice Smith"}, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
+- "Find ${DEFAULT_CONFIG.itemType} by Bob Johnson where description contains keyword" → {"type": "search", "target": "${DEFAULT_CONFIG.itemType}", "filter": [{"${DEFAULT_CONFIG.entityField}": "Bob Johnson"}, {"description": {"contains": "keyword"}}], "limit": 10, "scope": "database", "extractedCollection": null}
+- "What is the average price of products?" → {"type": "aggregate", "target": "price", "filter": null, "limit": null, "scope": "database", "extractedCollection": null, "aggregationFunction": "average", "aggregationField": "price"}
+- "Show ${DEFAULT_CONFIG.itemType} with price greater than 100 and category electronics" → {"type": "search", "target": "${DEFAULT_CONFIG.itemType}", "filter": [{"price": {"gt": 100}}, {"category": "electronics"}], "limit": null, "scope": "database", "extractedCollection": null}
+`;
 
   try {
     let response: string;
@@ -1035,82 +1064,190 @@ async function executeQuery(
 }
 
 async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
+  const config = DEFAULT_CONFIG;
   switch (intent.type) {
     case "count":
       if (intent.target === "collections") {
         return await countCollections();
       }
-      if (intent.target === "artists") {
-        return await countArtistsAcrossDatabase();
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return await countEntitiesAcrossDatabase(config); // Corrected back to countEntitiesAcrossDatabase
       }
       if (
-        (intent.target === "images" || intent.target === "items") &&
-        intent.filter
+        (intent.target === config.itemType || intent.target === "items") && // User asking for specific item type like "images" or generic "items"
+        intent.target !== "total" && // Differentiate from purely "total" vectors
+        !(intent.filter && intent.filter[config.entityField]) // Not an entity-specific item count
       ) {
-        return await countImagesByArtistAcrossDatabase(intent.filter);
+        // Pass the specific item type (e.g., "images" or actual config.itemType if intent.target is "items")
+        const targetItemType =
+          intent.target === "items" ? config.itemType : intent.target;
+        return await countTotalItemsAcrossDatabase(config, targetItemType);
+      }
+      if (intent.filter && intent.filter[config.entityField]) {
+        // This is for counting items BY a specific entity, should remain separate
+        return await countItemsByEntityAcrossDatabase(intent.filter, config);
       }
       if (intent.target === "total") {
-        return await countTotalVectorsAcrossDatabase();
+        // User explicitly asks for "total" vectors/records
+        return await countTotalItemsAcrossDatabase(config, null); // No specific type to count
       }
-      // Fallback for count operations
-      return await countTotalVectorsAcrossDatabase();
+      // Fallback for count operations if none of the above matched precisely
+      // (e.g., if intent.target was something unexpected but type is count)
+      // Default to counting total vectors without a specific type focus.
+      return await countTotalItemsAcrossDatabase(config, null);
 
     case "collections":
       return await listCollections();
 
     case "database":
-      return await describeDatabaseInfo();
+      return await describeDatabaseInfo(); // This function internally uses listCollections which is somewhat generic
 
     case "search":
-      if (intent.filter) {
-        return await searchAcrossCollections(intent.filter, intent.limit || 10);
+      if (intent.filter && intent.filter[config.entityField]) {
+        // searchAcrossCollections needs to be updated to use searchItems and config
+        return await searchAcrossCollections(
+          intent.filter,
+          intent.limit || 10,
+          config
+        );
       }
+      // Add a more generic search if no entity filter is provided?
       break;
 
     case "summarize":
-      if (intent.filter) {
-        return await summarizeArtistAcrossDatabase(
+      if (intent.filter && intent.filter[config.entityField]) {
+        return await summarizeEntityAcrossDatabase(
           intent.filter,
-          intent.limit || 20
+          intent.limit || 20,
+          config
         );
       }
       break;
 
     case "list":
-      if (intent.target === "artists" || intent.target === "entities") {
-        return await listArtistsAcrossDatabase(intent.limit || 50);
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return await listEntitiesAcrossDatabase(intent.limit || 50, config);
       }
-      // Handle listing items from the collection with the most items
       if (
-        intent.target === (process.env.ITEM_TYPE || "images") ||
+        intent.target === config.itemType ||
         intent.target === "items" ||
-        intent.target === "vectors"
+        intent.target === "vectors" // Keep vectors for a bit for compatibility with old error message context
       ) {
         const collectionName = await getCollectionWithMostItems();
         if (collectionName) {
-          // We need to call a function that lists items for a specific collection.
-          // Assuming listImages is appropriate, or create a generic listItems if needed.
-          return await listImages(collectionName, intent.limit || 20);
+          return await listItems(collectionName, intent.limit || 20, config);
         }
-        // Fallback or error if no collection found
         return {
           items: [],
-          message:
-            "Could not determine the collection with the most items or it's empty.",
+          message: `Could not determine the collection with the most ${config.itemType} or it's empty.`,
         };
       }
       break;
 
     case "top":
     case "ranking":
-      if (intent.target === "entities" && intent.sortBy === "image_count") {
-        return await getTopArtistsByImageCountAcrossDatabase(intent.limit || 1);
+      if (
+        (intent.target === config.entityType || intent.target === "entities") &&
+        intent.sortBy === `${config.itemType}_count`
+      ) {
+        return await getTopEntitiesByItemCountAcrossDatabase(
+          intent.limit || 1,
+          config
+        );
       }
+      // Add more ranking/top targets as new features are added
       break;
+
+    case "aggregate":
+      if (
+        intent.extractedCollection &&
+        intent.aggregationFunction &&
+        intent.aggregationField
+      ) {
+        // If a collection is specified in the intent, delegate to collection-level aggregation
+        // We need to call executeCollectionQuery, but it's not directly accessible here.
+        // Instead, we can replicate its aggregation logic for the specified collection.
+        // Or, ideally, refactor to have a shared aggregation core function.
+        // For now, let's call a temporary helper or directly implement.
+
+        // Re-using parts of executeCollectionQuery's aggregation logic for the specific collection:
+        const collection = intent.extractedCollection;
+        let pointsToAggregate: any[] = [];
+        let currentOffset: any = undefined; // Changed type to any
+        const scrollLimit = 250;
+
+        do {
+          const scrollResult = await client.scroll(collection, {
+            limit: scrollLimit,
+            ...(currentOffset !== undefined && { offset: currentOffset }),
+            with_payload: true,
+            filter: intent.filter
+              ? convertIntentFilterToQdrant(intent.filter, config)
+              : undefined,
+          });
+          pointsToAggregate.push(...scrollResult.points);
+          currentOffset = scrollResult.next_page_offset;
+        } while (currentOffset !== null && currentOffset !== undefined);
+
+        if (pointsToAggregate.length === 0) {
+          return {
+            result: null,
+            message: `No ${config.itemType} found in collection '${collection}' to aggregate.`,
+          };
+        }
+        const values = pointsToAggregate
+          .map((p) => p.payload?.[intent.aggregationField!])
+          .filter((v) => typeof v === "number") as number[];
+        if (values.length === 0) {
+          return {
+            result: null,
+            message: `Field '${intent.aggregationField}' not found or not numeric in the ${config.itemType} within collection '${collection}'.`,
+          };
+        }
+        let result: number | null = null;
+        switch (intent.aggregationFunction) {
+          case "sum":
+            result = values.reduce((acc, val) => acc + val, 0);
+            break;
+          case "average":
+            result = values.reduce((acc, val) => acc + val, 0) / values.length;
+            break;
+          case "min":
+            result = Math.min(...values);
+            break;
+          case "max":
+            result = Math.max(...values);
+            break;
+          default:
+            return {
+              result: null,
+              message: `Unsupported aggregation function: ${intent.aggregationFunction}`,
+            };
+        }
+        return {
+          collection_name: collection,
+          aggregation_function: intent.aggregationFunction,
+          aggregation_field: intent.aggregationField,
+          item_count_considered: values.length,
+          total_items_scanned: pointsToAggregate.length,
+          result: result,
+        };
+      } else if (intent.aggregationFunction && intent.aggregationField) {
+        // No specific collection, and database-wide aggregation is complex without more specific item targeting.
+        return {
+          result: null,
+          message: `Database-wide aggregation for field '${intent.aggregationField}' requires a specific collection to be identified in your query, or a filter that clearly targets a set of ${config.itemType} across collections.`,
+        };
+      }
+      return {
+        result: null,
+        message:
+          "Aggregation function, field, or target collection not sufficiently specified for database-level aggregation.",
+      };
 
     default:
       throw new Error(
-        `Database-level query type '${intent.type}' not implemented yet`
+        `Database-level query type '${intent.type}' not implemented yet for target '${intent.target}'`
       );
   }
 
@@ -1123,62 +1260,169 @@ async function executeCollectionQuery(
   collection: string,
   intent: QueryIntent
 ): Promise<any> {
+  const config = DEFAULT_CONFIG;
   switch (intent.type) {
     case "count":
-      if (intent.target === "artists") {
-        return await countUniqueArtists(collection);
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return await countUniqueEntities(collection, config);
       } else if (
-        (intent.target === "images" || intent.target === "items") &&
-        intent.filter
+        (intent.target === config.itemType || intent.target === "items") &&
+        intent.filter &&
+        intent.filter[config.entityField]
       ) {
-        return await countImagesByArtist(collection, intent.filter);
+        return await countItemsByEntity(collection, intent.filter, config);
       } else {
+        // Default to counting total items in the collection
         return await countTotal(collection);
       }
 
     case "search":
-      return await searchImages(collection, intent.filter, intent.limit || 10);
+      // Ensure filter is passed correctly, searchItems handles entityField internally
+      return await searchItems(
+        collection,
+        intent.filter,
+        intent.limit || 10,
+        config
+      );
 
     case "summarize":
-      return await summarizeArtistWork(
-        collection,
-        intent.filter,
-        intent.limit || 20
-      );
+      if (intent.filter && intent.filter[config.entityField]) {
+        return await summarizeEntityWork(
+          collection,
+          intent.filter,
+          intent.limit || 20,
+          config
+        );
+      }
+      // Add case for summarizing whole collection if no entity filter?
+      break;
 
     case "analyze":
-      return await analyzeArtistWork(
-        collection,
-        intent.filter,
-        intent.limit || 50
-      );
+      if (intent.filter && intent.filter[config.entityField]) {
+        return await analyzeEntityWork(
+          collection,
+          intent.filter,
+          intent.limit || 50,
+          config
+        );
+      }
+      break;
 
     case "list":
-      if (intent.target === "artists" || intent.target === "entities") {
-        return await listUniqueArtists(collection, intent.limit || 50);
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return await listUniqueEntities(collection, intent.limit || 50, config);
       } else {
-        return await listImages(collection, intent.limit || 20);
+        return await listItems(collection, intent.limit || 20, config);
       }
 
-    case "filter":
-      return await filterImages(collection, intent.filter, intent.limit || 20);
+    case "filter": // filter intent often implies a search with specific criteria
+      return await searchItems(
+        collection,
+        intent.filter,
+        intent.limit || 20,
+        config
+      );
 
     case "describe":
+      // describeCollection already uses DEFAULT_CONFIG internally
       return await describeCollection(collection);
+
+    case "aggregate":
+      if (intent.aggregationFunction && intent.aggregationField) {
+        // Fetch all points matching the filter (if any) in the collection
+        // For simplicity, we'll scroll all points if no filter, or apply a basic filter.
+        // More complex filtering for aggregation can be added later.
+        let pointsToAggregate: any[] = [];
+        let currentOffset: any = undefined; // Changed type to any
+        const scrollLimit = 250; // Process in batches
+
+        do {
+          const scrollResult = await client.scroll(collection, {
+            limit: scrollLimit,
+            ...(currentOffset !== undefined && { offset: currentOffset }),
+            with_payload: true, // Ensure payload is fetched
+            filter: intent.filter
+              ? convertIntentFilterToQdrant(intent.filter, config)
+              : undefined,
+          });
+          pointsToAggregate.push(...scrollResult.points);
+          currentOffset = scrollResult.next_page_offset;
+        } while (currentOffset !== null && currentOffset !== undefined);
+
+        if (pointsToAggregate.length === 0) {
+          return {
+            result: null,
+            message: `No ${config.itemType} found to aggregate.`,
+          };
+        }
+
+        const values = pointsToAggregate
+          .map((p) => p.payload?.[intent.aggregationField!])
+          .filter((v) => typeof v === "number") as number[];
+
+        if (values.length === 0) {
+          return {
+            result: null,
+            message: `Field '${intent.aggregationField}' not found or not numeric in the ${config.itemType}.`,
+          };
+        }
+
+        let result: number | null = null;
+        switch (intent.aggregationFunction) {
+          case "sum":
+            result = values.reduce((acc, val) => acc + val, 0);
+            break;
+          case "average":
+            result = values.reduce((acc, val) => acc + val, 0) / values.length;
+            break;
+          case "min":
+            result = Math.min(...values);
+            break;
+          case "max":
+            result = Math.max(...values);
+            break;
+          default:
+            return {
+              result: null,
+              message: `Unsupported aggregation function: ${intent.aggregationFunction}`,
+            };
+        }
+        return {
+          aggregation_function: intent.aggregationFunction,
+          aggregation_field: intent.aggregationField,
+          item_count_considered: values.length, // Number of items that had the numeric field
+          total_items_scanned: pointsToAggregate.length, // Total items matching filter (or all)
+          result: result,
+        };
+      }
+      return {
+        result: null,
+        message: "Aggregation function or field not specified in intent.",
+      };
 
     case "top":
     case "ranking":
-      if (intent.target === "entities" && intent.sortBy === "image_count") {
-        return await getTopArtistsByImageCountInCollection(
+      if (
+        (intent.target === config.entityType || intent.target === "entities") &&
+        intent.sortBy === `${config.itemType}_count`
+      ) {
+        return await getTopEntitiesByItemCountInCollection(
           collection,
-          intent.limit || 1
+          intent.limit || 1,
+          config
         );
       }
       break;
 
     default:
-      throw new Error(`Unknown collection-level query type: ${intent.type}`);
+      throw new Error(
+        `Unknown collection-level query type: ${intent.type} for target ${intent.target}`
+      );
   }
+  // Add a fallback throw here if a case doesn't return for some reason
+  throw new Error(
+    `Collection-level query could not be fully processed: ${intent.type} ${intent.target}`
+  );
 }
 
 // New database-level functions
@@ -1196,31 +1440,80 @@ async function countCollections(): Promise<{
 }
 
 async function listCollections(): Promise<{
-  collections: Array<{ name: string; vectors_count?: number }>;
+  collections: Array<{
+    name: string;
+    vectors_count?: number;
+    itemTypeHint?: string; // New: Hint for the type of items in the collection
+    sample_payloads?: any[]; // New: Sample payloads for inspection
+  }>;
 }> {
   const collectionsInfo = await client.getCollections();
-  const collections = collectionsInfo.collections;
+  const rawCollections = collectionsInfo.collections;
+  const config = DEFAULT_CONFIG; // For accessing additionalFields config
 
-  // Get detailed info for each collection using actual count
   const detailedCollections = await Promise.all(
-    collections.map(async (collection: any) => {
+    rawCollections.map(async (collection: any) => {
+      let itemCount = 0;
+      let itemTypeHint: string = "unknown";
+      let samplePayloads: any[] = [];
+
       try {
-        // Use the same count method that works for individual queries
         const countResult = await client.count(collection.name, {});
-        return {
-          name: collection.name,
-          vectors_count: countResult.count || 0,
-        };
+        itemCount = countResult.count || 0;
+
+        if (itemCount > 0) {
+          // Fetch a few sample items to infer type
+          const sampleScroll = await client.scroll(collection.name, {
+            limit: 3,
+            with_payload: true,
+          });
+          samplePayloads = sampleScroll.points.map((p) => p.payload);
+
+          if (samplePayloads.length > 0) {
+            let hints: string[] = [];
+            for (const payload of samplePayloads) {
+              if (payload.mime_type && typeof payload.mime_type === "string") {
+                if (payload.mime_type.startsWith("image/")) hints.push("image");
+                else if (payload.mime_type.startsWith("text/"))
+                  hints.push("document");
+                else if (payload.mime_type.startsWith("application/pdf"))
+                  hints.push("document");
+                // Add more MIME type checks as needed
+                else hints.push("data"); // Generic data if MIME type is not recognized
+              } else if (
+                config.additionalFields?.filename &&
+                payload[config.additionalFields.filename]
+              ) {
+                const filename =
+                  payload[config.additionalFields.filename].toLowerCase();
+                if (filename.match(/\.(jpg|jpeg|png|gif|webp)$/))
+                  hints.push("image");
+                else if (filename.match(/\.(txt|md|doc|docx|pdf)$/))
+                  hints.push("document");
+                // Add more extension checks
+                else hints.push("file"); // Generic file if extension not recognized
+              }
+            }
+            if (hints.length > 0) {
+              const uniqueHints = [...new Set(hints)];
+              if (uniqueHints.length === 1) itemTypeHint = uniqueHints[0];
+              else itemTypeHint = "mixed";
+            }
+          }
+        }
       } catch (error) {
         console.warn(
-          `Failed to count vectors in collection ${collection.name}:`,
+          `Failed to get details for collection ${collection.name}:`,
           error
         );
-        return {
-          name: collection.name,
-          vectors_count: 0,
-        };
+        // Keep itemCount as 0 and itemTypeHint as unknown if error occurs
       }
+      return {
+        name: collection.name,
+        vectors_count: itemCount,
+        itemTypeHint: itemCount > 0 ? itemTypeHint : undefined, // only provide hint if collection not empty
+        // sample_payloads: samplePayloads, // Optionally return payloads if needed for debugging or more complex logic later
+      };
     })
   );
 
@@ -1243,7 +1536,8 @@ async function describeDatabaseInfo(): Promise<any> {
 
 async function searchAcrossCollections(
   filter: any,
-  limit: number
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG // Added config
 ): Promise<any> {
   const collectionsData = await listCollections();
   const allResults: any[] = [];
@@ -1251,12 +1545,13 @@ async function searchAcrossCollections(
   // Search each collection
   for (const collection of collectionsData.collections) {
     try {
-      const results = await searchImages(collection.name, filter, limit);
-      if (results.images && results.images.length > 0) {
+      // Use generic searchItems and pass config
+      const results = await searchItems(collection.name, filter, limit, config);
+      if (results.items && results.items.length > 0) {
         allResults.push({
           collection: collection.name,
           count: results.count,
-          images: results.images,
+          items: results.items, // Changed from images to items
         });
       }
     } catch (error) {
@@ -1279,10 +1574,10 @@ async function countTotal(collection: string): Promise<{ count: number }> {
   return { count: response.count };
 }
 
-async function countUniqueArtists(
+async function countUniqueEntities(
   collection: string,
   config: DatabaseConfig = DEFAULT_CONFIG
-): Promise<{ count: number; artists: string[] }> {
+): Promise<{ count: number; entities: string[] }> {
   // Get ALL points from the collection, not just 1000
   let allPoints: any[] = [];
   let offset: string | number | undefined = undefined;
@@ -1314,14 +1609,15 @@ async function countUniqueArtists(
 
   return {
     count: entities.size,
-    artists: Array.from(entities).slice(0, 20), // Still limit the returned list for display
+    entities: Array.from(entities).slice(0, 20), // Still limit the returned list for display
   };
 }
 
-async function searchImages(
+async function searchItems(
   collection: string,
   filter: any,
-  limit: number
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
 ): Promise<any> {
   const response = await client.scroll(collection, {
     limit: 1000,
@@ -1341,17 +1637,45 @@ async function searchImages(
 
   const limitedPoints = filteredPoints.slice(0, limit);
 
+  const items = limitedPoints.map((point: any) => {
+    const item: any = {
+      id: point.id,
+      [config.entityField]: point.payload?.[config.entityField],
+    };
+
+    // Safely access additionalFields
+    const filenameField = config.additionalFields?.filename;
+    const urlField = config.additionalFields?.url;
+    const descriptionField = config.additionalFields?.description;
+
+    if (filenameField && point.payload?.[filenameField]) {
+      item[filenameField] = point.payload[filenameField];
+    }
+    if (urlField && point.payload?.[urlField]) {
+      item[urlField] = point.payload[urlField];
+    }
+    if (descriptionField && point.payload?.[descriptionField]) {
+      item[descriptionField] = point.payload[descriptionField];
+    }
+
+    // Include the full payload for flexibility
+    item.payload = point.payload;
+
+    return item;
+  });
+
   return {
     count: limitedPoints.length,
-    images: limitedPoints,
+    items,
   };
 }
 
-async function listUniqueArtists(
+async function listUniqueEntities(
   collection: string,
-  limit: number
-): Promise<{ artists: string[] }> {
-  // Get ALL points from the collection to ensure accurate artist listing
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<{ entities: string[] }> {
+  // Get ALL points from the collection to ensure accurate entity listing
   let allPoints: any[] = [];
   let offset: string | number | undefined = undefined;
 
@@ -1374,28 +1698,54 @@ async function listUniqueArtists(
     }
   } while (offset !== null && offset !== undefined);
 
-  const artists = new Set(
-    allPoints.map((point: any) => point.payload?.name).filter(Boolean)
+  const entities = new Set(
+    allPoints
+      .map((point: any) => point.payload?.[config.entityField])
+      .filter(Boolean)
   );
 
-  // Return the requested number of artists
-  return { artists: Array.from(artists).slice(0, limit) };
+  // Return the requested number of entities
+  return { entities: Array.from(entities).slice(0, limit) };
 }
 
-async function listImages(collection: string, limit: number): Promise<any> {
+async function listItems(
+  collection: string,
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
   const response = await client.scroll(collection, {
     limit,
     with_payload: true,
     with_vector: false,
   });
 
-  return {
-    count: response.points.length,
-    images: response.points.map((point: any) => ({
+  const items = response.points.map((point: any) => {
+    const item: any = {
       id: point.id,
-      artist: point.payload?.name,
-      filename: point.payload?.file_name,
-    })),
+      [config.entityField]: point.payload?.[config.entityField],
+    };
+
+    // Safely access additionalFields
+    const filenameField = config.additionalFields?.filename;
+    const urlField = config.additionalFields?.url;
+    const descriptionField = config.additionalFields?.description;
+
+    if (filenameField && point.payload?.[filenameField]) {
+      item[filenameField] = point.payload[filenameField];
+    }
+    if (urlField && point.payload?.[urlField]) {
+      item[urlField] = point.payload[urlField];
+    }
+    if (descriptionField && point.payload?.[descriptionField]) {
+      item[descriptionField] = point.payload[descriptionField];
+    }
+
+    return item;
+  });
+
+  return {
+    count: items.length,
+    items: items.slice(0, limit),
   };
 }
 
@@ -1404,19 +1754,19 @@ async function filterImages(
   filter: any,
   limit: number
 ): Promise<any> {
-  return await searchImages(collection, filter, limit);
+  return await searchItems(collection, filter, limit, DEFAULT_CONFIG); // Pass config, call searchItems
 }
 
 async function describeCollection(collection: string): Promise<any> {
   const totalCount = await countTotal(collection);
-  const artistsData = await countUniqueArtists(collection);
-  const sampleImages = await listImages(collection, 5);
+  const entitiesData = await countUniqueEntities(collection);
+  const sampleItems = await listItems(collection, 5);
 
   return {
-    total_images: totalCount.count,
-    unique_artists: artistsData.count,
-    sample_artists: artistsData.artists.slice(0, 10),
-    sample_images: sampleImages.images,
+    total_items: totalCount.count,
+    unique_entities: entitiesData.count,
+    sample_entities: entitiesData.entities.slice(0, 10),
+    sample_items: sampleItems.items,
   };
 }
 
@@ -1428,25 +1778,55 @@ async function generateResponse(
   model?: string
 ): Promise<string> {
   const fallbackResponse = generateFallbackResponse(question, intent, data);
+  const config = DEFAULT_CONFIG;
 
   if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
     return fallbackResponse;
   }
 
-  const systemPrompt = `You are a helpful assistant that explains vector database query results in natural language.
-  
+  let systemPrompt = `You are a helpful assistant that explains vector database query results in natural language.
+General item type for this database is "${
+    config.itemType
+  }", and general entity type is "${config.entityType}".
+
+DATA STRUCTURE FOR DATABASE COUNTS (intent.type === 'count' && intent.scope === 'database' && (intent.target === '${
+    config.itemType
+  }' || intent.target === 'items' || intent.target === 'total')):
+- data.total_vectors_count: Grand total of all vectors/records.
+- data.count_of_queried_item_type: (Optional) Count of the specific item type the user asked for (e.g., if they asked for "images" and itemTypeHint matched "image").
+- data.queried_item_type: (Optional) The specific item type string (e.g., "images") that data.count_of_queried_item_type refers to.
+- data.by_collection: Array of { name: string, count: number, itemTypeHint?: string (e.g., "image", "document", "mixed", "unknown") }.
+
+RESPONSE LOGIC FOR DATABASE COUNTS:
+1. MAIN SUMMARY:
+   - If data.count_of_queried_item_type is available and greater than 0: Start with "There are a total of [data.count_of_queried_item_type] [data.queried_item_type]...".
+   - Else if user asked for a specific type (intent.target is not 'total' or 'items'): Start with "Found 0 of the queried ${
+     intent.target
+   }."
+   - Else (user asked for general 'total' or 'items', or specific type count is 0): Start with "There are a total of [data.total_vectors_count] vectors/records in the database..."
+2. DISTRIBUTION DETAILS (ALWAYS SHOW THIS if data.by_collection exists):
+   - State: "These are distributed across the following collections:"
+   - For each collection in data.by_collection:
+     - List as: "- [collection.name]: [collection.count] [derived type]"
+     - To derive type: 
+         - If collection.itemTypeHint is available and not 'unknown': Use it (e.g., "5 images", "1 document", "3 mixed types").
+         - Else if collection.count > 0: Use "vectors/records" (e.g., "2 vectors/records").
+         - Else (count is 0): Use "0 vectors/records".
+     - If the user queried a *specific* item type (e.g., intent.target was "images") AND this collection's itemTypeHint is known AND it *differs* from the queried type: Add a note like "(not the queried '[intent.target]')". E.g., "docs_gemini: 1 document (not the queried 'images')".
+
 The user asked: "${question}"
-The query type was: ${intent.type}
+The query intent was: ${JSON.stringify(intent, null, 2)}
 The data returned is: ${JSON.stringify(data, null, 2)}
 
-IMPORTANT GUIDELINES FOR RANKING/TOP QUERIES:
-- If there are ties (multiple artists with the same count), ALWAYS mention this explicitly
-- Don't say "X has the most" if there are ties - say "X is tied for the most" or "X and Y are tied"
-- Pay attention to the "has_tie", "tie_count", and "artists_with_max_count" fields in the data
-- Be precise with singular/plural forms (1 image vs 2 images)
-- If the user asked for "the artist with most" but there's a tie, explain the tie situation clearly
+OTHER GUIDELINES:
+- Be concise.
+- For lists not covered above, summarize if long.
+- AGGREGATION: "The [data.aggregation_function] of [data.aggregation_field] for the considered ${
+    config.itemType
+  } is [data.result]."
+- RANKING/TOP: Explicitly mention ties for top spot. Be precise with plurals.
 
-Provide a concise, natural language response that directly answers the user's question. Be specific with numbers and names when available, and always be accurate about ties and rankings.`;
+Provide a natural language response based on these guidelines and the provided data.`;
 
   try {
     let response: string;
@@ -1498,8 +1878,8 @@ function generateFallbackResponse(
   intent: QueryIntent,
   data: any
 ): string {
-  // Safely handle null/undefined data
   const safeData = data || {};
+  const config = DEFAULT_CONFIG;
 
   if (intent.scope === "database") {
     switch (intent.type) {
@@ -1509,16 +1889,84 @@ function generateFallbackResponse(
             safeData.collections?.join(", ") || "None found"
           }.`;
         }
-        if (intent.target === "artists") {
-          return `I found ${
-            safeData.count || 0
-          } unique artists across all collections. Some of them include: ${
-            safeData.artists?.slice(0, 5).join(", ") || "No artists found"
+        if (
+          intent.target === config.entityType ||
+          intent.target === "entities"
+        ) {
+          return `I found ${safeData.count || 0} unique ${
+            config.entityType + pluralize(safeData.count || 0)
+          } across all collections. Some of them include: ${
+            safeData.entities?.slice(0, 5).join(", ") ||
+            `No ${config.entityType + pluralize(0)} found`
           }.`;
         }
-        if (intent.target === "images" && intent.filter?.name) {
-          return `I found ${safeData.count || 0} images by ${
-            safeData.artist || intent.filter.name
+        // This now handles data from the enhanced countTotalItemsAcrossDatabase
+        if (
+          intent.target === config.itemType ||
+          intent.target === "items" ||
+          intent.target === "total"
+        ) {
+          const totalVectors = safeData.total_vectors_count || 0;
+          const byCollection = safeData.by_collection || [];
+          const numCollections = byCollection.length;
+          let summaryMessage = "";
+
+          if (
+            safeData.queried_item_type &&
+            typeof safeData.count_of_queried_item_type === "number"
+          ) {
+            if (safeData.count_of_queried_item_type > 0) {
+              summaryMessage = `Found ${safeData.count_of_queried_item_type} ${safeData.queried_item_type}.`;
+            } else {
+              summaryMessage = `Found 0 of the queried ${safeData.queried_item_type}.`;
+            }
+            if (totalVectors !== safeData.count_of_queried_item_type) {
+              summaryMessage += ` The database contains a total of ${totalVectors} vectors/records.`;
+            }
+          } else {
+            summaryMessage = `The database contains ${totalVectors} total vectors/records.`;
+          }
+          summaryMessage += ` These are distributed across ${numCollections} collection${pluralize(
+            numCollections
+          )}.`;
+
+          if (byCollection.length > 0) {
+            summaryMessage += "\nBreakdown by collection:";
+            summaryMessage += byCollection
+              .map((c: any) => {
+                let typeLabel =
+                  c.itemTypeHint && c.itemTypeHint !== "unknown"
+                    ? c.itemTypeHint + pluralize(c.count)
+                    : "vector" +
+                      pluralize(c.count) +
+                      "/record" +
+                      pluralize(c.count);
+
+                // Check if user queried a specific type AND this collection's hint differs
+                const singularQueriedType =
+                  intent.target !== "total" && intent.target.endsWith("s")
+                    ? intent.target.slice(0, -1)
+                    : intent.target;
+                if (
+                  intent.target !== "total" &&
+                  intent.target !== "items" &&
+                  c.itemTypeHint &&
+                  c.itemTypeHint !== "unknown" &&
+                  c.itemTypeHint !== singularQueriedType
+                ) {
+                  typeLabel += ` (not the queried '${intent.target}')`;
+                }
+                return `\n- ${c.name}: ${c.count} ${typeLabel}`;
+              })
+              .join("");
+          }
+          return summaryMessage;
+        }
+        if (intent.filter && intent.filter[config.entityField]) {
+          return `I found ${safeData.count || 0} ${
+            config.itemType + pluralize(safeData.count || 0)
+          } by ${
+            safeData.entity || intent.filter[config.entityField]
           } across all collections. ${
             safeData.by_collection?.length > 0
               ? `Found in: ${safeData.by_collection
@@ -1527,12 +1975,10 @@ function generateFallbackResponse(
               : ""
           }`;
         }
-        if (intent.target === "total") {
-          return `The database contains ${
-            safeData.count || 0
-          } total vectors across all collections.`;
-        }
-        break;
+        return `The database contains ${
+          safeData.total_vectors_count || safeData.count || 0
+        } total vectors/records across all collections.`; // Fallback if data structure is old
+
       case "collections":
         return `The database contains ${
           safeData.collections?.length || 0
@@ -1548,25 +1994,25 @@ function generateFallbackResponse(
       case "search":
         return `I searched across ${
           safeData.collections_searched || 0
-        } collections and found ${safeData.total_count || 0} matching items.`;
+        } collections and found ${safeData.total_count || 0} matching items.`; // Assuming items is generic enough here
       case "summarize":
         if (intent.filter?.name) {
           return (
             `Summary of ${
-              safeData.artist || intent.filter.name
+              safeData.entity || intent.filter.name
             }'s work across the database:\n\n` +
-            `Total Images: ${safeData.total_images || 0}\n` +
+            `Total Items: ${safeData.total_items || 0}\n` +
             `Collections: Found in ${
               safeData.collections_found || 0
             } collections\n` +
             `File Types: ${safeData.file_types?.join(", ") || "Various"}\n\n` +
             `Breakdown by collection:\n${
               safeData.by_collection
-                ?.map((c: any) => `• ${c.collection}: ${c.image_count} images`)
+                ?.map((c: any) => `• ${c.collection}: ${c.item_count} items`)
                 .join("\n") || "No collections found"
             }\n\n` +
-            `Sample Images: ${
-              safeData.sample_images
+            `Sample Items: ${
+              safeData.sample_items
                 ?.slice(0, 3)
                 .map((img: any) => `${img.filename} (${img.collection})`)
                 .join(", ") || "None found"
@@ -1575,12 +2021,32 @@ function generateFallbackResponse(
         }
         break;
       case "list":
-        if (intent.target === "artists") {
-          return `I found ${
-            safeData.artists?.length || 0
-          } unique artists across all collections: ${
-            safeData.artists?.slice(0, 10).join(", ") || "No artists found"
+        if (
+          intent.target === config.entityType ||
+          intent.target === "entities"
+        ) {
+          return `I found ${safeData.entities?.length || 0} unique ${
+            config.entityType + pluralize(safeData.entities?.length || 0)
+          } across all collections: ${
+            safeData.entities?.slice(0, 10).join(", ") ||
+            `No ${config.entityType + pluralize(0)} found`
           }.`;
+        }
+        if (
+          intent.target === config.itemType ||
+          intent.target === "items" ||
+          intent.target === "vectors"
+        ) {
+          if (safeData.items && safeData.items.length > 0) {
+            return `Found ${safeData.items.length} ${
+              config.itemType + pluralize(safeData.items.length)
+            } across the database. Sample: ${safeData.items[0].id}...`;
+          } else if (safeData.message) {
+            return safeData.message;
+          }
+          return `No ${
+            config.itemType + pluralize(0)
+          } found across the database matching your criteria.`;
         }
         break;
     }
@@ -1589,44 +2055,57 @@ function generateFallbackResponse(
   // Collection-level responses
   switch (intent.type) {
     case "count":
-      if (intent.target === "artists") {
-        return `I found ${
-          safeData.count || 0
-        } unique artists in the collection. Some of them include: ${
-          safeData.artists?.slice(0, 5).join(", ") || "No artists found"
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return `I found ${safeData.count || 0} unique ${
+          config.entityType + pluralize(safeData.count || 0)
+        } in the collection. Some of them include: ${
+          safeData.entities?.slice(0, 5).join(", ") ||
+          `No ${config.entityType + pluralize(0)} found`
         }.`;
-      } else if (intent.target === "images" && intent.filter?.name) {
-        return `I found ${safeData.count || 0} images by ${
-          safeData.artist || intent.filter.name
+      } else if (intent.filter && intent.filter[config.entityField]) {
+        return `I found ${safeData.count || 0} ${
+          config.itemType + pluralize(safeData.count || 0)
+        } by ${
+          safeData.entity || intent.filter[config.entityField]
         } in this collection.${
-          safeData.sample_images?.length > 0
-            ? ` Sample files: ${safeData.sample_images
+          safeData.sample_items?.length > 0
+            ? ` Sample files: ${safeData.sample_items
                 .slice(0, 3)
-                .map((img: any) => img.filename)
+                .map(
+                  (item: any) =>
+                    item[config.additionalFields?.filename || "filename"] ||
+                    item.id
+                )
                 .join(", ")}.`
             : ""
         }`;
       } else {
-        return `The collection contains ${safeData.count || 0} total images.`;
+        return `The collection contains ${safeData.count || 0} total ${
+          config.itemType + pluralize(safeData.count || 0)
+        }.`;
       }
 
     case "search":
     case "filter":
-      return `I found ${safeData.count || 0} images matching your criteria.`;
+      return `I found ${safeData.count || 0} ${
+        config.itemType + pluralize(safeData.count || 0)
+      } matching your criteria.`; // Added pluralize
 
     case "summarize":
       if (intent.filter?.name) {
+        // ... (summary for entity in collection - assuming itemType is implicitly items/images based on context)
+        // This part is harder to make fully generic with pluralize without more context from data structure
         return (
           `Summary of ${
-            safeData.artist || intent.filter.name
+            safeData.entity || intent.filter.name
           }'s work in this collection:\n\n` +
-          `Total Images: ${safeData.total_images || 0}\n` +
+          `Total Items: ${safeData.total_items || 0}\n` +
           `File Types: ${safeData.file_types?.join(", ") || "Various"}\n` +
           `Sample Files: ${
             safeData.sample_filenames?.slice(0, 5).join(", ") || "None"
           }\n\n` +
-          `Image Details:\n${
-            safeData.images
+          `Item Details:\n${
+            safeData.items
               ?.slice(0, 5)
               .map(
                 (img: any, i: number) =>
@@ -1640,9 +2119,10 @@ function generateFallbackResponse(
 
     case "analyze":
       if (intent.filter?.name) {
+        // Similar to summarize, uses artist/image specific terms from data structure
         return (
           `Analysis of ${
-            safeData.artist || intent.filter.name
+            safeData.artist || intent.filter.name // artist might be hardcoded in data structure
           }'s work patterns:\n\n` +
           `Total Images: ${safeData.total_images || 0}\n` +
           `File Types: ${
@@ -1653,7 +2133,7 @@ function generateFallbackResponse(
           `Common Patterns: ${
             Object.entries(safeData.common_naming_patterns || {})
               .slice(0, 3)
-              .map(([pattern, count]) => `"${pattern}" (${count} files)`)
+              .map(([pattern, count]) => `\"${pattern}\" (${count} files)`)
               .join(", ") || "No patterns found"
           }\n` +
           `Source Domains: ${
@@ -1664,89 +2144,107 @@ function generateFallbackResponse(
       break;
 
     case "list":
-      if (intent.target === "artists") {
-        return `Here are the artists in the collection: ${
-          safeData.artists?.slice(0, 10).join(", ") || "No artists found"
-        }${safeData.artists?.length > 10 ? "..." : ""}.`;
+      if (intent.target === config.entityType || intent.target === "entities") {
+        return `Here are the ${
+          config.entityType + pluralize(safeData.entities?.length || 0)
+        } in the collection: ${
+          safeData.entities?.slice(0, 10).join(", ") ||
+          `No ${config.entityType + pluralize(0)} found`
+        }${safeData.entities?.length > 10 ? "..." : ""}.`;
       } else {
-        return `I found ${safeData.count || 0} items in the collection.`;
+        // Corrected this specific problematic line
+        return `I found ${safeData.count || 0} ${
+          config.itemType + pluralize(safeData.count || 0)
+        } in the collection.`;
       }
 
     case "describe":
-      return `This collection contains ${
-        safeData.total_images || 0
-      } images from ${
-        safeData.unique_artists || 0
-      } unique artists. Some featured artists include: ${
-        safeData.sample_artists?.slice(0, 5).join(", ") || "No artists found"
+      return `This collection contains ${safeData.total_items || 0} ${
+        config.itemType + pluralize(safeData.total_items || 0)
+      } from ${safeData.unique_entities || 0} unique ${
+        config.entityType + pluralize(safeData.unique_entities || 0)
+      }. Some featured ${
+        config.entityType + pluralize(safeData.sample_entities?.length || 0)
+      } include: ${
+        safeData.sample_entities?.slice(0, 5).join(", ") ||
+        `No ${config.entityType + pluralize(0)} found`
       }.`;
 
     case "top":
     case "ranking":
       if (safeData.top_artists && safeData.top_artists.length > 0) {
-        // Check for ties at the top
+        // top_artists is specific to older structure
+        // This section is hard to fully generify without knowing the exact generic data structure for top entities/items
+        // Assuming for now that config.entityType would replace 'artists' and config.itemType for 'images' if data was generic
+        const topEntities = safeData.top_artists; // Generic alias
+        const maxItemCount = safeData.max_image_count; // Generic alias
+        const entitiesWithMaxCount = safeData.artists_with_max_count; // Generic alias
+
         if (safeData.has_tie && intent.limit === 1) {
-          // Handle the case where user asked for "the artist with most" but there's a tie
-          const tiedArtists =
-            safeData.artists_with_max_count ||
-            safeData.top_artists.filter(
-              (artist: any) => artist.image_count === safeData.max_image_count
+          const tiedEntities =
+            entitiesWithMaxCount ||
+            topEntities.filter(
+              (entity: any) => entity.image_count === maxItemCount
             );
 
-          if (tiedArtists.length === 2) {
-            return `There's a tie! Both ${tiedArtists[0].name} and ${
-              tiedArtists[1].name
-            } have the most images with ${safeData.max_image_count} image${
-              safeData.max_image_count === 1 ? "" : "s"
+          if (tiedEntities.length === 2) {
+            return `There's a tie! Both ${tiedEntities[0].name} and ${
+              tiedEntities[1].name
+            } have the most ${
+              config.itemType + pluralize(maxItemCount)
+            } with ${maxItemCount} ${
+              config.itemType + pluralize(maxItemCount)
             } each.`;
-          } else if (tiedArtists.length > 2) {
-            const lastArtist = tiedArtists[tiedArtists.length - 1].name;
-            const otherArtists = tiedArtists
+          } else if (tiedEntities.length > 2) {
+            const lastEntity = tiedEntities[tiedEntities.length - 1].name;
+            const otherEntities = tiedEntities
               .slice(0, -1)
               .map((a: any) => a.name)
               .join(", ");
             return `There's a ${
-              tiedArtists.length
-            }-way tie! ${otherArtists}, and ${lastArtist} all have the most images with ${
-              safeData.max_image_count
-            } image${safeData.max_image_count === 1 ? "" : "s"} each.`;
+              tiedEntities.length
+            }-way tie! ${otherEntities}, and ${lastEntity} all have the most ${
+              config.itemType + pluralize(maxItemCount)
+            } with ${maxItemCount} ${
+              config.itemType + pluralize(maxItemCount)
+            } each.`;
           }
         }
 
-        // Handle regular cases (no tie or user asked for multiple results)
         if (intent.limit === 1 && !safeData.has_tie) {
-          const topArtist = safeData.top_artists[0];
-          return `${topArtist.name} has the most images with ${
-            topArtist.image_count
-          } image${topArtist.image_count === 1 ? "" : "s"}.`;
+          const topEntity = topEntities[0];
+          return `${topEntity.name} has the most ${
+            config.itemType + pluralize(topEntity.image_count)
+          } with ${topEntity.image_count} ${
+            config.itemType + pluralize(topEntity.image_count)
+          }.`;
         } else {
-          // Multiple results or tie situation where we show the list
-          const artistList = safeData.top_artists
+          const entityList = topEntities
             .map(
-              (artist: any, index: number) =>
-                `${index + 1}. ${artist.name} (${artist.image_count} image${
-                  artist.image_count === 1 ? "" : "s"
-                })`
+              (entity: any, index: number) =>
+                `${index + 1}. ${entity.name} (${entity.image_count} ${
+                  config.itemType + pluralize(entity.image_count)
+                })` // Assuming image_count is item_count
             )
             .join(", ");
 
-          let response = `Top ${
-            intent.limit || safeData.top_artists.length
-          } artists by image count: ${artistList}`;
+          let responseText = `Top ${intent.limit || topEntities.length} ${
+            config.entityType + pluralize(intent.limit || topEntities.length)
+          } by ${config.itemType}_count: ${entityList}`;
 
-          // Add tie information if relevant
           if (safeData.has_tie && safeData.tie_count > 1) {
-            response += `. Note: ${
-              safeData.tie_count
-            } artists are tied for the highest count of ${
-              safeData.max_image_count
-            } image${safeData.max_image_count === 1 ? "" : "s"}.`;
+            responseText += `. Note: ${safeData.tie_count} ${
+              config.entityType + pluralize(safeData.tie_count)
+            } are tied for the highest count of ${maxItemCount} ${
+              config.itemType + pluralize(maxItemCount)
+            }.`;
           }
-
-          return response;
+          return responseText;
         }
       }
-      return "No artists found with images.";
+      return `No ${config.entityType + pluralize(0)} found with ${
+        config.itemType + pluralize(0)
+      }.`; // Generic fallback
 
     default:
       return "I processed your query successfully using pattern matching.";
@@ -1755,32 +2253,44 @@ function generateFallbackResponse(
   return "I processed your query successfully.";
 }
 
+function pluralize(count: number): string {
+  return count === 1 ? "" : "s";
+}
+
+// Add pluralize to itemType usage in fallback responses.
+// Example: config.itemType + pluralize(count)
+
 // New database-level functions for artists and total counts
-async function countArtistsAcrossDatabase(): Promise<{
+async function countEntitiesAcrossDatabase(
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<{
   count: number;
-  artists: string[];
+  entities: string[]; // Renamed from artists to entities for consistency
 }> {
   const collectionsData = await listCollections();
-  const allArtists = new Set<string>();
+  const allEntities = new Set<string>(); // Renamed from allArtists to allEntities
 
-  // Collect artists from each collection
+  // Collect entities from each collection
   for (const collection of collectionsData.collections) {
     try {
       if (collection.vectors_count && collection.vectors_count > 0) {
-        const artistsData = await countUniqueArtists(collection.name);
-        artistsData.artists.forEach((artist) => allArtists.add(artist));
+        // Call the generic countUniqueEntities function and pass the config
+        const entitiesData = await countUniqueEntities(collection.name, config);
+        entitiesData.entities.forEach((entity: string) =>
+          allEntities.add(entity)
+        ); // Use entitiesData.entities and add type to entity
       }
     } catch (error) {
       console.warn(
-        `Failed to get artists from collection ${collection.name}:`,
+        `Failed to get ${config.entityType} from collection ${collection.name}:`,
         error
       );
     }
   }
 
   return {
-    count: allArtists.size,
-    artists: Array.from(allArtists).slice(0, 20), // Show first 20
+    count: allEntities.size,
+    entities: Array.from(allEntities).slice(0, 20), // Show first 20
   };
 }
 
@@ -1803,38 +2313,43 @@ async function countTotalVectorsAcrossDatabase(): Promise<{
   };
 }
 
-async function listArtistsAcrossDatabase(limit: number): Promise<{
-  artists: string[];
-  by_collection: Array<{ collection: string; artists: string[] }>;
+async function listEntitiesAcrossDatabase(
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<{
+  entities: string[]; // Renamed from artists
+  by_collection: Array<{ collection: string; entities: string[] }>; // Renamed from artists
 }> {
   const collectionsData = await listCollections();
-  const allArtists = new Set<string>();
-  const byCollection: Array<{ collection: string; artists: string[] }> = [];
+  const allEntities = new Set<string>(); // Renamed from allArtists
+  const byCollection: Array<{ collection: string; entities: string[] }> = []; // Renamed from artists
 
-  // Collect artists from each collection
+  // Collect entities from each collection
   for (const collection of collectionsData.collections) {
     try {
       if (collection.vectors_count && collection.vectors_count > 0) {
-        const artistsData = await listUniqueArtists(
+        const entitiesData = await listUniqueEntities(
+          // Call to generic listUniqueEntities
           collection.name,
-          Math.min(limit, 20)
+          Math.min(limit, 20),
+          config // Pass config here
         );
-        artistsData.artists.forEach((artist) => allArtists.add(artist));
+        entitiesData.entities.forEach((entity) => allEntities.add(entity)); // Use entitiesData.entities
         byCollection.push({
           collection: collection.name,
-          artists: artistsData.artists,
+          entities: entitiesData.entities, // Use entitiesData.entities
         });
       }
     } catch (error) {
       console.warn(
-        `Failed to get artists from collection ${collection.name}:`,
+        `Failed to get ${config.entityType} from collection ${collection.name}:`,
         error
       );
     }
   }
 
   return {
-    artists: Array.from(allArtists).slice(0, limit),
+    entities: Array.from(allEntities).slice(0, limit),
     by_collection: byCollection,
   };
 }
@@ -2320,4 +2835,97 @@ async function getCollectionWithMostItems(): Promise<string | null> {
     }
   }
   return collectionWithMostItems;
+}
+
+// Helper function to convert intent filter to Qdrant filter (basic implementation)
+// This will need to be expanded significantly to support complex filters from the updated prompt
+function convertIntentFilterToQdrant(filter: any, config: DatabaseConfig): any {
+  if (!filter) return undefined;
+
+  const qdrantFilter: { must?: any[]; should?: any[]; must_not?: any[] } = {
+    must: [],
+  };
+
+  const processSingleFilter = (singleFilter: any) => {
+    const conditions: any[] = [];
+    for (const key in singleFilter) {
+      const value = singleFilter[key];
+      if (key === config.entityField) {
+        conditions.push({ key: config.entityField, match: { value: value } });
+      } else if (typeof value === "object" && value !== null) {
+        if (value.contains) {
+          conditions.push({ key: key, match: { text: value.contains } }); // Basic text containment
+        } else if (value.gt) {
+          conditions.push({ key: key, range: { gt: value.gt } });
+        } else if (value.lt) {
+          conditions.push({ key: key, range: { lt: value.lt } });
+        }
+        // Add more operators here (gte, lte, etc.)
+      } else {
+        conditions.push({ key: key, match: { value: value } });
+      }
+    }
+    return conditions;
+  };
+
+  if (Array.isArray(filter)) {
+    // Multiple AND conditions
+    filter.forEach((subFilter) => {
+      qdrantFilter.must!.push(...processSingleFilter(subFilter));
+    });
+  } else {
+    // Single filter object
+    qdrantFilter.must!.push(...processSingleFilter(filter));
+  }
+
+  return qdrantFilter.must!.length > 0 ? qdrantFilter : undefined;
+}
+
+// Renamed function
+async function countTotalItemsAcrossDatabase(
+  config: DatabaseConfig = DEFAULT_CONFIG,
+  specificItemTypeToCount: string | null = null // New parameter
+): Promise<{
+  total_vectors_count: number;
+  count_of_queried_item_type?: number;
+  queried_item_type?: string;
+  by_collection: Array<{ name: string; count: number; itemTypeHint?: string }>;
+}> {
+  const collectionsData = await listCollections(); // listCollections now returns itemTypeHint
+  let totalVectors = 0;
+  let countOfSpecificType = 0;
+
+  // Determine the singular form of the queried type for accurate comparison
+  const singularQueriedType =
+    specificItemTypeToCount && specificItemTypeToCount.endsWith("s")
+      ? specificItemTypeToCount.slice(0, -1)
+      : specificItemTypeToCount;
+
+  collectionsData.collections.forEach((col) => {
+    totalVectors += col.vectors_count || 0;
+    // Compare hint (singular) with the singular form of the queried type
+    if (
+      specificItemTypeToCount &&
+      col.itemTypeHint &&
+      col.itemTypeHint === singularQueriedType
+    ) {
+      countOfSpecificType += col.vectors_count || 0;
+    }
+  });
+
+  const result: any = {
+    total_vectors_count: totalVectors,
+    by_collection: collectionsData.collections.map((col) => ({
+      name: col.name,
+      count: col.vectors_count || 0,
+      itemTypeHint: col.itemTypeHint,
+    })),
+  };
+
+  if (specificItemTypeToCount) {
+    result.count_of_queried_item_type = countOfSpecificType;
+    result.queried_item_type = specificItemTypeToCount; // Keep original (potentially plural) for response
+  }
+
+  return result;
 }
