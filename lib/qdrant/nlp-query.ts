@@ -1080,6 +1080,25 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
       if (intent.target === "artists" || intent.target === "entities") {
         return await listArtistsAcrossDatabase(intent.limit || 50);
       }
+      // Handle listing items from the collection with the most items
+      if (
+        intent.target === (process.env.ITEM_TYPE || "images") ||
+        intent.target === "items" ||
+        intent.target === "vectors"
+      ) {
+        const collectionName = await getCollectionWithMostItems();
+        if (collectionName) {
+          // We need to call a function that lists items for a specific collection.
+          // Assuming listImages is appropriate, or create a generic listItems if needed.
+          return await listImages(collectionName, intent.limit || 20);
+        }
+        // Fallback or error if no collection found
+        return {
+          items: [],
+          message:
+            "Could not determine the collection with the most items or it's empty.",
+        };
+      }
       break;
 
     case "top":
@@ -2280,4 +2299,25 @@ async function getTopArtistsByImageCountInCollection(
         )[0]?.[0] || "0",
     },
   };
+}
+
+async function getCollectionWithMostItems(): Promise<string | null> {
+  const collectionsData = await listCollections();
+  if (
+    !collectionsData.collections ||
+    collectionsData.collections.length === 0
+  ) {
+    return null;
+  }
+
+  let maxItems = -1;
+  let collectionWithMostItems: string | null = null;
+
+  for (const collection of collectionsData.collections) {
+    if ((collection.vectors_count || 0) > maxItems) {
+      maxItems = collection.vectors_count || 0;
+      collectionWithMostItems = collection.name;
+    }
+  }
+  return collectionWithMostItems;
 }
