@@ -1,199 +1,139 @@
-# Yearn - Natural Language Query Interface for Vector Databases
+# Yearn - Natural Language Query Interface
 
-A modern, full-stack web application that provides a ChatGPT-like interface for querying Qdrant vector databases using natural language.
+A natural language interface for vector databases that allows you to ask questions about your data in plain English.
 
-## 🏗️ **Architecture**
+## Features
 
-This is a **unified Next.js application** that combines both frontend and backend functionality:
+- **Natural Language Queries**: Ask questions like "How many artists are in my collection?" or "Show me work by Chris Dyer"
+- **Context-Aware Conversations**: The system remembers previous queries and can handle follow-up questions
+- **Multiple AI Models**: Support for OpenAI GPT and Google Gemini models
+- **Configurable Database Schema**: Works with different types of vector databases beyond just images/artists
+- **Real-time Markdown Rendering**: Properly formatted responses with markdown support
+- **Full-Screen Interface**: Optimized for productivity with a clean, full-screen layout
 
-- **Frontend**: React + Next.js + Tailwind CSS + shadcn/ui
-- **Backend**: Next.js API Routes (serverless functions)
-- **Vector Database**: Qdrant Cloud integration
-- **AI/LLM**: OpenAI GPT-3.5 & Google Gemini support
-- **Deployment**: Docker + Render ready
+## Database Configuration
 
-## 📁 **Project Structure**
+The system is designed to work with different types of vector databases. You can configure it for your specific use case by setting environment variables:
 
-```
-yearn/                          # Root directory
-├── pages/                      # Next.js pages & API routes
-│   ├── api/                    # Backend API endpoints
-│   │   ├── health.ts           # Health check endpoint
-│   │   └── ask.ts              # Natural language query endpoint
-│   ├── _app.tsx                # App wrapper
-│   └── index.tsx               # Main chat interface page
-├── components/                 # React components
-│   ├── ui/                     # shadcn/ui components
-│   └── chat-interface.tsx      # Main chat component
-├── lib/                        # Shared utilities & logic
-│   ├── api.ts                  # Frontend API calls
-│   ├── types.ts                # TypeScript interfaces
-│   ├── schemas.ts              # Zod validation schemas
-│   └── qdrant/                 # Vector database logic
-│       ├── db.ts               # Qdrant client
-│       └── nlp-query.ts        # Natural language processing
-├── styles/                     # Global CSS styles
-├── public/                     # Static assets
-├── Dockerfile                  # Production container
-├── docker-compose.yml          # Local development
-├── package.json                # Dependencies & scripts
-├── next.config.js              # Next.js configuration
-├── tailwind.config.js          # Tailwind CSS config
-└── tsconfig.json               # TypeScript config
-```
-
-## 🚀 **Quick Start**
-
-### **Prerequisites**
-
-- Node.js 18.0+ (18.17+ recommended)
-- npm or yarn
-- Qdrant Cloud account (or local Qdrant instance)
-- OpenAI API key (optional, has fallback)
-- Google Gemini API key (optional)
-
-### **1. Clone & Install**
+### Environment Variables
 
 ```bash
-git clone <your-repo-url>
-cd yearn
-npm install
+# Entity Configuration
+ENTITY_FIELD=name              # Field containing the main entity identifier (default: "name")
+ENTITY_TYPE=artists            # What to call entities in responses (default: "artists")
+ITEM_TYPE=images              # What to call individual items (default: "images")
+
+# Additional Fields (optional)
+FILENAME_FIELD=file_name      # Field for file names (default: "file_name")
+URL_FIELD=image_url          # Field for URLs (default: "image_url")
+DESCRIPTION_FIELD=description # Field for descriptions (default: "description")
 ```
 
-### **2. Environment Setup**
+### Example Configurations
 
-Create a `.env` file in the root directory:
-
-```env
-# Qdrant Configuration
-QDRANT_URL=your-qdrant-cloud-url
-QDRANT_API_KEY=your-qdrant-api-key
-QDRANT_HTTPS=true
-
-# AI/LLM API Keys (optional - has pattern matching fallback)
-OPENAI_API_KEY=your-openai-api-key
-GEMINI_API_KEY=your-gemini-api-key
-```
-
-### **3. Development**
+#### For Document Collections:
 
 ```bash
-# Start development server
-npm run dev
-
-# Open browser
-open http://localhost:3000
+ENTITY_FIELD=author
+ENTITY_TYPE=authors
+ITEM_TYPE=documents
+FILENAME_FIELD=document_name
+URL_FIELD=document_url
+DESCRIPTION_FIELD=summary
 ```
 
-### **4. Production Build**
+#### For Product Catalogs:
 
 ```bash
-# Build for production
-npm run build
-
-# Start production server
-npm start
+ENTITY_FIELD=brand
+ENTITY_TYPE=brands
+ITEM_TYPE=products
+FILENAME_FIELD=product_image
+URL_FIELD=product_url
+DESCRIPTION_FIELD=product_description
 ```
 
-## 🐳 **Docker Deployment**
-
-### **Local Docker**
+#### For Research Papers:
 
 ```bash
-# Build and run with Docker Compose
-npm run docker:up
-
-# Or manually
-docker build -t yearn .
-docker run -p 3000:3000 --env-file .env yearn
+ENTITY_FIELD=author
+ENTITY_TYPE=researchers
+ITEM_TYPE=papers
+FILENAME_FIELD=paper_title
+URL_FIELD=paper_url
+DESCRIPTION_FIELD=abstract
 ```
 
-### **Render Deployment**
+## Setup
 
-1. **Connect your GitHub repository** to Render
-2. **Create a new Web Service** with these settings:
-   - **Build Command**: `npm run build`
-   - **Start Command**: `npm start`
-   - **Environment**: Add your `.env` variables
-3. **Deploy** - Render will automatically build and deploy
+1. **Clone the repository**
 
-### **Alternative: Docker on Render**
+   ```bash
+   git clone <repository-url>
+   cd yearn
+   ```
 
-1. **Create a new Web Service**
-2. **Select "Docker"** as the environment
-3. **Set Dockerfile path**: `./Dockerfile`
-4. **Add environment variables** from your `.env`
+2. **Install dependencies**
 
-## 🔧 **Configuration**
+   ```bash
+   npm install
+   ```
 
-### **Environment Variables**
+3. **Set up environment variables**
 
-| Variable         | Required | Description               |
-| ---------------- | -------- | ------------------------- |
-| `QDRANT_URL`     | ✅       | Your Qdrant Cloud URL     |
-| `QDRANT_API_KEY` | ✅       | Your Qdrant API key       |
-| `QDRANT_HTTPS`   | ❌       | Use HTTPS (default: true) |
-| `OPENAI_API_KEY` | ❌       | OpenAI API key for GPT    |
-| `GEMINI_API_KEY` | ❌       | Google Gemini API key     |
+   ```bash
+   cp env.example .env
+   # Edit .env with your API keys and database configuration
+   ```
 
-### **Next.js Configuration**
+4. **Configure your vector database**
 
-The `next.config.js` includes:
+   - Set up Qdrant connection details
+   - Configure field mappings for your data schema
 
-- Standalone output for Docker
-- Webpack externals for server-side modules
-- Environment variable exposure
+5. **Run the development server**
+   ```bash
+   npm run dev
+   ```
 
-## 🎯 **Features**
+## Usage
 
-### **Natural Language Queries**
+### Basic Queries
 
-- **Count**: "How many artists are in this collection?"
-- **Search**: "Find me images by Chris Dyer"
-- **List**: "Show me all unique artists"
-- **Filter**: "Images with .jpeg extension"
-- **Describe**: "Tell me about this collection"
+- "How many [entities] are in my database?"
+- "List some [entities] from [collection]"
+- "Find [items] by [entity name]"
+- "Describe my database"
 
-### **AI/LLM Integration**
+### Advanced Queries
 
-- **Primary**: OpenAI GPT-3.5 Turbo
-- **Secondary**: Google Gemini Pro
-- **Fallback**: Pattern matching (works without API keys)
+- "Which [entity] has the most [items]?"
+- "Show me the top 5 [entities] by [item] count"
+- "Analyze [entity name]'s work patterns"
 
-### **User Interface**
+### Conversational Queries
 
-- **ChatGPT-like interface** with conversation history
-- **Real-time responses** with loading states
-- **Collection & provider selection** dropdowns
-- **Query metadata display** (execution time, query type)
-- **Responsive design** with Tailwind CSS
+- "Show me Chris Dyer's work" → "How many items do they have?" → "What about Alice?"
+- The system maintains context and can resolve pronouns and references
 
-## 📊 **API Endpoints**
+## API Endpoints
 
-### **GET /api/health**
+### POST /api/ask
 
-Health check endpoint.
-
-**Response:**
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-05-25T19:40:03.826Z"
-}
-```
-
-### **POST /api/ask**
-
-Natural language query endpoint.
+Query the vector database using natural language.
 
 **Request:**
 
 ```json
 {
-  "collection": "midjourneysample",
-  "question": "How many artists are there?",
-  "provider": "openai"
+  "question": "How many artists are in my collection?",
+  "collection": "optional_collection_name",
+  "model": "gpt-4o-mini",
+  "context": {
+    "conversationHistory": [],
+    "lastEntity": "optional_last_entity",
+    "lastCollection": "optional_last_collection"
+  }
 }
 ```
 
@@ -201,65 +141,31 @@ Natural language query endpoint.
 
 ```json
 {
-  "question": "How many artists are there?",
-  "answer": "I found 1000 unique artists in the collection...",
+  "answer": "I found 1,247 unique artists in your collection...",
   "query_type": "count",
-  "data": { "count": 1000, "artists": ["Chris Dyer", "..."] },
-  "execution_time_ms": 1250
+  "data": { "count": 1247, "artists": ["Artist 1", "Artist 2", ...] },
+  "execution_time_ms": 1250,
+  "context": { "conversationHistory": [...], "lastEntity": "...", ... }
 }
 ```
 
-## 🧪 **Testing**
+## Architecture
 
-### **API Testing**
+- **Frontend**: Next.js with TypeScript and Tailwind CSS
+- **Backend**: Next.js API routes
+- **Vector Database**: Qdrant
+- **AI Models**: OpenAI GPT and Google Gemini
+- **Natural Language Processing**: Custom intent parsing with LLM fallback
 
-```bash
-# Health check
-curl http://localhost:3000/api/health
-
-# Natural language query
-curl -X POST http://localhost:3000/api/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "How many artists?", "collection": "midjourneysample", "provider": "openai"}'
-```
-
-### **Frontend Testing**
-
-1. Open http://localhost:3000
-2. Select your collection and provider
-3. Ask questions like:
-   - "How many artists are in this collection?"
-   - "Find me images by Chris Dyer"
-   - "List all unique artists"
-
-## 🔍 **Troubleshooting**
-
-### **Common Issues**
-
-1. **Node.js Version**: Ensure you're using Node.js 18.17+
-2. **API Keys**: Check your Qdrant and LLM API keys
-3. **Collection Name**: Verify your Qdrant collection exists
-4. **CORS Issues**: API routes include CORS headers
-
-### **Logs**
-
-```bash
-# Development logs
-npm run dev
-
-# Production logs
-docker logs <container-id>
-```
-
-## 🤝 **Contributing**
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test thoroughly
+4. Add tests if applicable
 5. Submit a pull request
 
-## 📄 **License**
+## License
 
 MIT License - see LICENSE file for details.
 

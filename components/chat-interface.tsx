@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import ReactMarkdown from "react-markdown";
 import {
   ChatMessage,
   AVAILABLE_MODELS,
@@ -502,426 +503,466 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="bg-black min-h-screen text-white">
-      <div className="flex flex-col lg:flex-row gap-4 h-screen max-w-7xl mx-auto p-3">
+    <div className="h-screen w-screen bg-gray-900 text-white overflow-hidden">
+      <div className="flex h-full">
         {/* Model Selection Panel */}
-        <div className="w-full lg:w-72 space-y-3 overflow-y-auto max-h-screen">
-          <Card className="bg-gray-900 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
-                <Bot className="w-4 h-4" />
-                Query Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-xs font-medium mb-1 block text-gray-300">
-                  AI Model
-                </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value as ModelKey)}
-                  className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                >
-                  <optgroup label="OpenAI Models">
-                    {Object.entries(AVAILABLE_MODELS)
-                      .filter(([_, info]) => info.provider === "openai")
-                      .map(([key, info]) => (
-                        <option key={key} value={key}>
-                          {info.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="Gemini Models">
-                    {Object.entries(AVAILABLE_MODELS)
-                      .filter(([_, info]) => info.provider === "gemini")
-                      .map(([key, info]) => (
-                        <option key={key} value={key}>
-                          {info.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium mb-1 block text-gray-300">
-                  Collection (Optional)
-                </label>
-                <select
-                  value={selectedCollection}
-                  onChange={(e) => setSelectedCollection(e.target.value)}
-                  className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                >
-                  <option value="">Database-level query</option>
-                  {collections.map((collection) => (
-                    <option key={collection} value={collection}>
-                      {collection}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Conversation Context Indicator */}
-              {(conversationContext.lastEntity ||
-                conversationContext.lastCollection ||
-                conversationContext.conversationHistory.length > 0) && (
-                <div className="border-t border-gray-700 pt-3">
-                  <label className="text-xs font-medium mb-2 block text-gray-300">
-                    Conversation Context
+        <div className="w-80 flex-shrink-0 border-r border-gray-700 bg-gray-900 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <Card className="bg-gray-900 border-gray-700">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                  <Bot className="w-4 h-4" />
+                  Query Settings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-gray-300">
+                    AI Model
                   </label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) =>
+                      setSelectedModel(e.target.value as ModelKey)
+                    }
+                    className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                  >
+                    <optgroup label="OpenAI Models">
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "openai")
+                        .map(([key, info]) => (
+                          <option key={key} value={key}>
+                            {info.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="Gemini Models">
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "gemini")
+                        .map(([key, info]) => (
+                          <option key={key} value={key}>
+                            {info.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-gray-300">
+                    Collection (Optional)
+                  </label>
+                  <select
+                    value={selectedCollection}
+                    onChange={(e) => setSelectedCollection(e.target.value)}
+                    className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                  >
+                    <option value="">Database-level query</option>
+                    {collections.map((collection) => (
+                      <option key={collection} value={collection}>
+                        {collection}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Conversation Context Indicator */}
+                {(conversationContext.lastEntity ||
+                  conversationContext.lastCollection ||
+                  conversationContext.conversationHistory.length > 0) && (
+                  <div className="border-t border-gray-700 pt-3">
+                    <label className="text-xs font-medium mb-2 block text-gray-300">
+                      Conversation Context
+                    </label>
+                    <div className="space-y-1">
+                      {conversationContext.lastEntity && (
+                        <div className="text-xs bg-purple-900/30 rounded px-2 py-1 border border-purple-700/50">
+                          <span className="text-purple-300">Entity:</span>{" "}
+                          <span className="text-white">
+                            {conversationContext.lastEntity}
+                          </span>
+                        </div>
+                      )}
+                      {conversationContext.lastCollection && (
+                        <div className="text-xs bg-blue-900/30 rounded px-2 py-1 border border-blue-700/50">
+                          <span className="text-blue-300">Collection:</span>{" "}
+                          <span className="text-white">
+                            {conversationContext.lastCollection}
+                          </span>
+                        </div>
+                      )}
+                      {conversationContext.conversationHistory.length > 0 && (
+                        <div className="text-xs bg-gray-800/50 rounded px-2 py-1 border border-gray-600">
+                          <span className="text-gray-300">History:</span>{" "}
+                          <span className="text-white">
+                            {conversationContext.conversationHistory.length}{" "}
+                            turns
+                          </span>
+                        </div>
+                      )}
+                      {conversationContext.currentTopic && (
+                        <div className="text-xs bg-green-900/30 rounded px-2 py-1 border border-green-700/50">
+                          <span className="text-green-300">Topic:</span>{" "}
+                          <span className="text-white">
+                            {conversationContext.currentTopic}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() =>
+                        setConversationContext({ conversationHistory: [] })
+                      }
+                      className="text-xs text-gray-400 hover:text-white mt-2 underline"
+                    >
+                      Clear Context
+                    </button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-900 border-gray-700">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                  <Database className="w-4 h-4" />
+                  Example Queries
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <div className="text-xs font-medium mb-1 text-gray-300">
+                    Database-level:
+                  </div>
                   <div className="space-y-1">
-                    {conversationContext.lastEntity && (
-                      <div className="text-xs bg-purple-900/30 rounded px-2 py-1 border border-purple-700/50">
-                        <span className="text-purple-300">Entity:</span>{" "}
-                        <span className="text-white">
-                          {conversationContext.lastEntity}
-                        </span>
-                      </div>
-                    )}
-                    {conversationContext.lastCollection && (
-                      <div className="text-xs bg-blue-900/30 rounded px-2 py-1 border border-blue-700/50">
-                        <span className="text-blue-300">Collection:</span>{" "}
-                        <span className="text-white">
-                          {conversationContext.lastCollection}
-                        </span>
-                      </div>
-                    )}
-                    {conversationContext.conversationHistory.length > 0 && (
-                      <div className="text-xs bg-gray-800/50 rounded px-2 py-1 border border-gray-600">
-                        <span className="text-gray-300">History:</span>{" "}
-                        <span className="text-white">
-                          {conversationContext.conversationHistory.length} turns
-                        </span>
-                      </div>
-                    )}
-                    {conversationContext.currentTopic && (
-                      <div className="text-xs bg-green-900/30 rounded px-2 py-1 border border-green-700/50">
-                        <span className="text-green-300">Topic:</span>{" "}
-                        <span className="text-white">
-                          {conversationContext.currentTopic}
-                        </span>
-                      </div>
-                    )}
+                    {demoExamples.database.map((example, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleExampleClick(example)}
+                        className="text-xs text-left w-full p-2 bg-blue-900/30 hover:bg-blue-800/40 rounded border border-blue-700/50 text-blue-300 transition-colors"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-medium mb-1 text-gray-300">
+                    Collection-specific:
+                  </div>
+                  <div className="space-y-1">
+                    {demoExamples.collection.map((example, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleExampleClick(example)}
+                        className="text-xs text-left w-full p-2 bg-green-900/30 hover:bg-green-800/40 rounded border border-green-700/50 text-green-300 transition-colors"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Conversation Examples */}
+                <div>
+                  <div className="text-xs font-medium mb-1 text-gray-300">
+                    Conversational:
+                  </div>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() =>
+                        handleExampleClick("Show me Chris Dyer's work")
+                      }
+                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                    >
+                      Show me Chris Dyer's work
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleExampleClick("How many items do they have?")
+                      }
+                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                    >
+                      How many items do they have?
+                      <span className="text-purple-400 ml-1">
+                        (after asking about an artist)
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => handleExampleClick("What about Alice?")}
+                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                    >
+                      What about Alice?
+                      <span className="text-purple-400 ml-1">
+                        (continuing conversation)
+                      </span>
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleExampleClick("Also show me their latest work")
+                      }
+                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                    >
+                      Also show me their latest work
+                      <span className="text-purple-400 ml-1">
+                        (using pronoun reference)
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Debug Panel */}
+            {(conversationContext.lastEntity ||
+              conversationContext.lastCollection ||
+              conversationContext.conversationHistory.length > 0) && (
+              <Card className="bg-gray-900 border-yellow-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-yellow-300 text-sm">
+                    🧠 Debug: Conversation Context
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {conversationContext.lastEntity && (
+                    <div className="text-xs">
+                      <span className="text-yellow-300">Last Entity:</span>{" "}
+                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                        {conversationContext.lastEntity}
+                      </span>
+                    </div>
+                  )}
+                  {conversationContext.lastCollection && (
+                    <div className="text-xs">
+                      <span className="text-yellow-300">Last Collection:</span>{" "}
+                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                        {conversationContext.lastCollection}
+                      </span>
+                    </div>
+                  )}
+                  {conversationContext.lastQueryType && (
+                    <div className="text-xs">
+                      <span className="text-yellow-300">Last Query:</span>{" "}
+                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                        {conversationContext.lastQueryType}{" "}
+                        {conversationContext.lastTarget}
+                      </span>
+                    </div>
+                  )}
+                  {conversationContext.currentTopic && (
+                    <div className="text-xs">
+                      <span className="text-yellow-300">Current Topic:</span>{" "}
+                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                        {conversationContext.currentTopic}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-xs">
+                    <span className="text-yellow-300">History:</span>{" "}
+                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      {conversationContext.conversationHistory.length} turns
+                    </span>
                   </div>
                   <button
                     onClick={() =>
                       setConversationContext({ conversationHistory: [] })
                     }
-                    className="text-xs text-gray-400 hover:text-white mt-2 underline"
+                    className="text-xs text-yellow-400 hover:text-white mt-2 underline"
                   >
                     Clear Context
                   </button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-900 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
-                <Database className="w-4 h-4" />
-                Example Queries
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <div className="text-xs font-medium mb-1 text-gray-300">
-                  Database-level:
-                </div>
-                <div className="space-y-1">
-                  {demoExamples.database.map((example, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleExampleClick(example)}
-                      className="text-xs text-left w-full p-2 bg-blue-900/30 hover:bg-blue-800/40 rounded border border-blue-700/50 text-blue-300 transition-colors"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs font-medium mb-1 text-gray-300">
-                  Collection-specific:
-                </div>
-                <div className="space-y-1">
-                  {demoExamples.collection.map((example, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleExampleClick(example)}
-                      className="text-xs text-left w-full p-2 bg-green-900/30 hover:bg-green-800/40 rounded border border-green-700/50 text-green-300 transition-colors"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Conversation Examples */}
-              <div>
-                <div className="text-xs font-medium mb-1 text-gray-300">
-                  Conversational:
-                </div>
-                <div className="space-y-1">
-                  <button
-                    onClick={() =>
-                      handleExampleClick("Show me Chris Dyer's work")
-                    }
-                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
-                  >
-                    Show me Chris Dyer's work
-                  </button>
-                  <button
-                    onClick={() =>
-                      handleExampleClick("How many items do they have?")
-                    }
-                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
-                  >
-                    How many items do they have?
-                    <span className="text-purple-400 ml-1">
-                      (after asking about an artist)
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => handleExampleClick("What about Alice?")}
-                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
-                  >
-                    What about Alice?
-                    <span className="text-purple-400 ml-1">
-                      (continuing conversation)
-                    </span>
-                  </button>
-                  <button
-                    onClick={() =>
-                      handleExampleClick("Also show me their latest work")
-                    }
-                    className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
-                  >
-                    Also show me their latest work
-                    <span className="text-purple-400 ml-1">
-                      (using pronoun reference)
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Debug Panel */}
-          {(conversationContext.lastEntity ||
-            conversationContext.lastCollection ||
-            conversationContext.conversationHistory.length > 0) && (
-            <Card className="bg-gray-900 border-yellow-700">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-yellow-300 text-sm">
-                  🧠 Debug: Conversation Context
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {conversationContext.lastEntity && (
-                  <div className="text-xs">
-                    <span className="text-yellow-300">Last Entity:</span>{" "}
-                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
-                      {conversationContext.lastEntity}
-                    </span>
-                  </div>
-                )}
-                {conversationContext.lastCollection && (
-                  <div className="text-xs">
-                    <span className="text-yellow-300">Last Collection:</span>{" "}
-                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
-                      {conversationContext.lastCollection}
-                    </span>
-                  </div>
-                )}
-                {conversationContext.lastQueryType && (
-                  <div className="text-xs">
-                    <span className="text-yellow-300">Last Query:</span>{" "}
-                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
-                      {conversationContext.lastQueryType}{" "}
-                      {conversationContext.lastTarget}
-                    </span>
-                  </div>
-                )}
-                {conversationContext.currentTopic && (
-                  <div className="text-xs">
-                    <span className="text-yellow-300">Current Topic:</span>{" "}
-                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
-                      {conversationContext.currentTopic}
-                    </span>
-                  </div>
-                )}
-                <div className="text-xs">
-                  <span className="text-yellow-300">History:</span>{" "}
-                  <span className="text-white font-mono bg-gray-800 px-1 rounded">
-                    {conversationContext.conversationHistory.length} turns
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    setConversationContext({ conversationHistory: [] })
-                  }
-                  className="text-xs text-yellow-400 hover:text-white mt-2 underline"
-                >
-                  Clear Context
-                </button>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
 
         {/* Chat Interface */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <Card className="flex-1 flex flex-col bg-gray-900 border-gray-700 overflow-hidden">
-            <CardHeader className="pb-3 border-b border-gray-700">
-              <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
-                <Search className="w-4 h-4" />
-                Vector Database Chat
-                <Badge
-                  variant="outline"
-                  className="ml-auto text-xs border-gray-600 text-gray-300"
-                >
-                  {AVAILABLE_MODELS[selectedModel].name}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-              {/* Fixed height scrollable chat area */}
-              <div
-                ref={scrollAreaRef}
-                className="flex-1 overflow-y-auto px-4 py-3"
-                style={{ maxHeight: "calc(100vh - 200px)" }}
+        <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
+          {/* Header */}
+          <div className="border-b border-gray-700 bg-gray-900 p-4">
+            <div className="flex items-center gap-2 text-gray-100">
+              <Search className="w-5 h-5" />
+              <h1 className="text-lg font-semibold">Vector Database Chat</h1>
+              <Badge
+                variant="outline"
+                className="ml-auto text-sm border-gray-600 text-gray-300"
               >
-                {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-gray-400">
-                    <div className="text-center">
-                      <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">
-                        Ask me anything about your vector database!
-                      </p>
-                      <p className="text-xs mt-1 text-gray-500">
-                        Try the example queries on the left to get started.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {messages.map((message) => (
+                {AVAILABLE_MODELS[selectedModel].name}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Chat Messages Area */}
+          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">
+                    Ask me anything about your vector database!
+                  </p>
+                  <p className="text-xs mt-1 text-gray-500">
+                    Try the example queries on the left to get started.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-2 ${
+                      message.type === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`flex gap-2 max-w-[85%] ${
+                        message.type === "user"
+                          ? "flex-row-reverse"
+                          : "flex-row"
+                      }`}
+                    >
                       <div
-                        key={message.id}
-                        className={`flex gap-2 ${
+                        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
                           message.type === "user"
-                            ? "justify-end"
-                            : "justify-start"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-700 text-gray-300"
                         }`}
                       >
-                        <div
-                          className={`flex gap-2 max-w-[85%] ${
-                            message.type === "user"
-                              ? "flex-row-reverse"
-                              : "flex-row"
-                          }`}
-                        >
-                          <div
-                            className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                              message.type === "user"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-700 text-gray-300"
-                            }`}
-                          >
-                            {message.type === "user" ? (
-                              <User className="w-3 h-3" />
-                            ) : (
-                              <Bot className="w-3 h-3" />
-                            )}
-                          </div>
-                          <div
-                            className={`rounded-lg p-2 text-sm ${
-                              message.type === "user"
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-800 text-gray-100 border border-gray-700"
-                            }`}
-                          >
-                            <div>{message.content}</div>
-
-                            {message.type === "assistant" && message.data && (
-                              <div>
-                                {formatData(
-                                  message.data,
-                                  message.queryType || ""
-                                )}
-                              </div>
-                            )}
-
-                            {message.type === "assistant" &&
-                              message.executionTime && (
-                                <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
-                                  <Clock className="w-3 h-3" />
-                                  <span>{message.executionTime}ms</span>
-                                  {message.queryType && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="ml-1 text-xs bg-gray-700 text-gray-300"
-                                    >
-                                      {message.queryType}
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
-                          </div>
-                        </div>
+                        {message.type === "user" ? (
+                          <User className="w-3 h-3" />
+                        ) : (
+                          <Bot className="w-3 h-3" />
+                        )}
                       </div>
-                    ))}
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="flex gap-2">
-                          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 text-gray-300 flex items-center justify-center">
-                            <Bot className="w-3 h-3" />
-                          </div>
-                          <div className="bg-gray-800 rounded-lg p-2 border border-gray-700">
-                            <div className="flex space-x-1">
-                              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                              <div
-                                className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                                style={{ animationDelay: "0.1s" }}
-                              ></div>
-                              <div
-                                className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                                style={{ animationDelay: "0.2s" }}
-                              ></div>
+                      <div
+                        className={`rounded-lg p-2 text-sm ${
+                          message.type === "user"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-800 text-gray-100 border border-gray-700"
+                        }`}
+                      >
+                        <div>
+                          {message.type === "assistant" ? (
+                            <div className="prose prose-sm prose-invert max-w-none">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({ children }) => (
+                                    <p className="mb-2 last:mb-0">{children}</p>
+                                  ),
+                                  strong: ({ children }) => (
+                                    <strong className="font-semibold text-white">
+                                      {children}
+                                    </strong>
+                                  ),
+                                  em: ({ children }) => (
+                                    <em className="italic text-gray-300">
+                                      {children}
+                                    </em>
+                                  ),
+                                  code: ({ children }) => (
+                                    <code className="bg-gray-700 px-1 py-0.5 rounded text-xs font-mono text-gray-200">
+                                      {children}
+                                    </code>
+                                  ),
+                                  ul: ({ children }) => (
+                                    <ul className="list-disc list-inside mb-2 space-y-1">
+                                      {children}
+                                    </ul>
+                                  ),
+                                  ol: ({ children }) => (
+                                    <ol className="list-decimal list-inside mb-2 space-y-1">
+                                      {children}
+                                    </ol>
+                                  ),
+                                  li: ({ children }) => (
+                                    <li className="text-gray-200">
+                                      {children}
+                                    </li>
+                                  ),
+                                }}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
                             </div>
+                          ) : (
+                            message.content
+                          )}
+                        </div>
+
+                        {message.type === "assistant" && message.data && (
+                          <div>
+                            {formatData(message.data, message.queryType || "")}
                           </div>
+                        )}
+
+                        {message.type === "assistant" &&
+                          message.executionTime && (
+                            <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
+                              <Clock className="w-3 h-3" />
+                              <span>{message.executionTime}ms</span>
+                              {message.queryType && (
+                                <Badge
+                                  variant="secondary"
+                                  className="ml-1 text-xs bg-gray-700 text-gray-300"
+                                >
+                                  {message.queryType}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="flex gap-2">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 text-gray-300 flex items-center justify-center">
+                        <Bot className="w-3 h-3" />
+                      </div>
+                      <div className="bg-gray-800 rounded-lg p-2 border border-gray-700">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                          <div
+                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
                         </div>
                       </div>
-                    )}
-                    <div ref={messagesEndRef} />
+                    </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
+            )}
+          </div>
 
-              {/* Input area */}
-              <div className="border-t border-gray-700 bg-gray-900 p-3">
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                  <Input
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Ask about your vector database..."
-                    disabled={isLoading}
-                    className="flex-1 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={isLoading || !inputValue.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Input area */}
+          <div className="border-t border-gray-700 bg-gray-900 p-4">
+            <form onSubmit={handleSubmit} className="flex gap-3">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Ask about your vector database..."
+                disabled={isLoading}
+                className="flex-1 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 h-12"
+              />
+              <Button
+                type="submit"
+                disabled={isLoading || !inputValue.trim()}
+                className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-6"
+              >
+                <Send className="w-5 h-5" />
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
     </div>

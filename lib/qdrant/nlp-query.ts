@@ -10,6 +10,43 @@ const openai = new OpenAI({
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+// Configuration for different database schemas
+interface DatabaseConfig {
+  entityField: string; // Field that contains the main entity identifier (e.g., "name", "author", "creator")
+  entityType: string; // What to call the entities (e.g., "artists", "authors", "creators", "entities")
+  itemType: string; // What to call individual items (e.g., "images", "documents", "items", "records")
+  additionalFields?: {
+    filename?: string; // Field for file names
+    url?: string; // Field for URLs
+    description?: string; // Field for descriptions
+  };
+}
+
+// Default configuration - can be overridden via environment variables or config
+const DEFAULT_CONFIG: DatabaseConfig = {
+  entityField: process.env.ENTITY_FIELD || "name",
+  entityType: process.env.ENTITY_TYPE || "artists",
+  itemType: process.env.ITEM_TYPE || "images",
+  additionalFields: {
+    filename: process.env.FILENAME_FIELD || "file_name",
+    url: process.env.URL_FIELD || "image_url",
+    description: process.env.DESCRIPTION_FIELD || "description",
+  },
+};
+
+// Helper function to get entity value from a point
+function getEntityValue(
+  point: any,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): string | null {
+  return point.payload?.[config.entityField] || null;
+}
+
+// Helper function to get additional field values
+function getFieldValue(point: any, fieldName: string): string | null {
+  return point.payload?.[fieldName] || null;
+}
+
 interface QueryIntent {
   type:
     | "count"
@@ -366,8 +403,25 @@ async function parseQueryIntent(
   model?: string,
   context?: ConversationContext
 ): Promise<QueryIntent> {
+  // Get available collections to help with intent parsing
+  let availableCollections: string[] = [];
+  try {
+    const collectionsData = await listCollections();
+    availableCollections = collectionsData.collections.map((c) => c.name);
+    console.log(
+      "📋 Available collections for intent parsing:",
+      availableCollections
+    );
+  } catch (error) {
+    console.warn("Failed to get collections for intent parsing:", error);
+  }
+
   // First try simple pattern matching as fallback
-  const fallbackIntent = inferIntentFromQuestion(question, context);
+  const fallbackIntent = inferIntentFromQuestion(
+    question,
+    context,
+    availableCollections
+  );
 
   // Build context-aware system prompt
   let systemPrompt = `You are a query intent parser for a vector database system. Parse the user's question to determine:
@@ -377,6 +431,12 @@ async function parseQueryIntent(
 4. Query scope (collection-specific or database-wide)
 5. Collection name if mentioned
 6. Sort criteria for ranking queries
+
+Available collections in this database: ${availableCollections.join(", ")}
+
+IMPORTANT: When parsing the query, check if mentioned names are collection names first before treating them as entity names.
+- If a name matches a collection name, set "extractedCollection" and "scope" to "collection"
+- If a name doesn't match any collection, treat it as an entity name in the filter
 
 Available scopes:
 - "collection": query operates on a specific collection
@@ -536,12 +596,32 @@ Examples:
 
 function inferIntentFromQuestion(
   question: string,
-  context?: ConversationContext
+  context?: ConversationContext,
+  availableCollections?: string[]
 ): QueryIntent {
   const q = question.toLowerCase();
 
-  // Try to extract collection name from the question
-  const extractedCollection = extractCollectionFromQuestion(question);
+  // Try to extract collection name from the question, checking against available collections
+  const extractedCollection = extractCollectionFromQuestion(
+    question,
+    availableCollections
+  );
+
+  // Check if any mentioned names are collection names
+  let isCollectionQuery = false;
+  let targetCollection: string | undefined = extractedCollection;
+
+  if (availableCollections && availableCollections.length > 0) {
+    // Look for collection names mentioned in the question
+    for (const collectionName of availableCollections) {
+      if (q.includes(collectionName.toLowerCase())) {
+        isCollectionQuery = true;
+        targetCollection = collectionName;
+        console.log(`🎯 Detected collection name in query: ${collectionName}`);
+        break;
+      }
+    }
+  }
 
   // Handle pronouns in fallback if context is available
   let processedQuestion = question;
@@ -638,6 +718,7 @@ function inferIntentFromQuestion(
   }
 
   // Check for entity-specific queries with generic patterns (use processed question)
+  // But first check if the mentioned name is actually a collection name
   const entityMatch =
     processedQuestion.match(
       /(?:by|from|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
@@ -648,25 +729,33 @@ function inferIntentFromQuestion(
     processedQuestion.match(
       /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s+(?:work|items|pieces|data|content))/i
     );
-  const entityName = entityMatch ? entityMatch[1].trim() : null;
 
-  // Database-level queries
-  if (q.includes("collections") || q.includes("database")) {
-    if (q.includes("how many") || q.includes("count")) {
-      return { type: "count", target: "collections", scope: "database" };
-    }
-    if (q.includes("list") || q.includes("what") || q.includes("show")) {
-      return { type: "collections", target: "list", scope: "database" };
-    }
-    if (q.includes("describe")) {
-      return { type: "database", target: "overview", scope: "database" };
+  let entityName: string | null = null;
+  if (entityMatch) {
+    const candidateName = entityMatch[1].trim();
+    // Check if this is actually a collection name
+    if (
+      availableCollections &&
+      availableCollections.some(
+        (col) => col.toLowerCase() === candidateName.toLowerCase()
+      )
+    ) {
+      // This is a collection name, not an entity name
+      isCollectionQuery = true;
+      targetCollection = candidateName;
+      console.log(
+        `🎯 Detected collection name in entity pattern: ${candidateName}`
+      );
+    } else {
+      // This is an entity name
+      entityName = candidateName;
     }
   }
 
   // Entity-specific queries (high priority)
   if (entityName) {
     const filter = { name: entityName };
-    const scope = extractedCollection ? "collection" : "database";
+    const scope = targetCollection ? "collection" : "database";
 
     if (
       q.includes("summary") ||
@@ -680,7 +769,7 @@ function inferIntentFromQuestion(
         filter,
         limit: 20,
         scope,
-        ...(extractedCollection && { extractedCollection }),
+        ...(targetCollection && { extractedCollection: targetCollection }),
       };
     }
 
@@ -690,7 +779,7 @@ function inferIntentFromQuestion(
         target: "items",
         filter,
         scope,
-        ...(extractedCollection && { extractedCollection }),
+        ...(targetCollection && { extractedCollection: targetCollection }),
       };
     }
 
@@ -701,7 +790,7 @@ function inferIntentFromQuestion(
         filter,
         limit: 10,
         scope,
-        ...(extractedCollection && { extractedCollection }),
+        ...(targetCollection && { extractedCollection: targetCollection }),
       };
     }
 
@@ -712,8 +801,48 @@ function inferIntentFromQuestion(
         filter,
         limit: 50,
         scope,
-        ...(extractedCollection && { extractedCollection }),
+        ...(targetCollection && { extractedCollection: targetCollection }),
       };
+    }
+  }
+
+  // Handle collection-specific queries (when no entity is specified)
+  if (isCollectionQuery && targetCollection && !entityName) {
+    const scope = "collection";
+
+    if (
+      q.includes("summarize") ||
+      q.includes("summarise") ||
+      q.includes("summary")
+    ) {
+      return {
+        type: "describe",
+        target: "collection",
+        scope,
+        extractedCollection: targetCollection,
+      };
+    }
+
+    if (q.includes("describe")) {
+      return {
+        type: "describe",
+        target: "collection",
+        scope,
+        extractedCollection: targetCollection,
+      };
+    }
+  }
+
+  // Database-level queries
+  if (q.includes("collections") || q.includes("database")) {
+    if (q.includes("how many") || q.includes("count")) {
+      return { type: "count", target: "collections", scope: "database" };
+    }
+    if (q.includes("list") || q.includes("what") || q.includes("show")) {
+      return { type: "collections", target: "list", scope: "database" };
+    }
+    if (q.includes("describe")) {
+      return { type: "database", target: "overview", scope: "database" };
     }
   }
 
@@ -823,8 +952,21 @@ function inferIntentFromQuestion(
 }
 
 // New function to extract collection names from natural language
-function extractCollectionFromQuestion(question: string): string | undefined {
+function extractCollectionFromQuestion(
+  question: string,
+  availableCollections?: string[]
+): string | undefined {
   const q = question.toLowerCase();
+
+  // First, check against available collections if provided
+  if (availableCollections && availableCollections.length > 0) {
+    for (const collectionName of availableCollections) {
+      if (q.includes(collectionName.toLowerCase())) {
+        console.log(`🎯 Found collection name in question: ${collectionName}`);
+        return collectionName;
+      }
+    }
+  }
 
   // Common patterns for mentioning collections
   const patterns = [
@@ -857,24 +999,18 @@ function extractCollectionFromQuestion(question: string): string | undefined {
           "every",
         ].includes(candidate)
       ) {
-        return candidate;
+        // If we have available collections, check if this candidate matches
+        if (availableCollections && availableCollections.length > 0) {
+          const matchingCollection = availableCollections.find(
+            (col) => col.toLowerCase() === candidate.toLowerCase()
+          );
+          if (matchingCollection) {
+            return matchingCollection;
+          }
+        } else {
+          return candidate;
+        }
       }
-    }
-  }
-
-  // Look for specific common collection names that might appear without prepositions
-  const commonCollectionNames = [
-    "midjourneysample",
-    "test_collection",
-    "my_docs",
-    "test_small",
-    "new_test_yearn",
-    "docs_openai",
-    "docs_gemini",
-  ];
-  for (const name of commonCollectionNames) {
-    if (q.includes(name)) {
-      return name;
     }
   }
 
@@ -1125,7 +1261,8 @@ async function countTotal(collection: string): Promise<{ count: number }> {
 }
 
 async function countUniqueArtists(
-  collection: string
+  collection: string,
+  config: DatabaseConfig = DEFAULT_CONFIG
 ): Promise<{ count: number; artists: string[] }> {
   // Get ALL points from the collection, not just 1000
   let allPoints: any[] = [];
@@ -1150,13 +1287,15 @@ async function countUniqueArtists(
     }
   } while (offset !== null && offset !== undefined);
 
-  const artists = new Set(
-    allPoints.map((point: any) => point.payload?.name).filter(Boolean)
+  const entities = new Set(
+    allPoints
+      .map((point: any) => getEntityValue(point, config))
+      .filter((value): value is string => Boolean(value))
   );
 
   return {
-    count: artists.size,
-    artists: Array.from(artists).slice(0, 20), // Still limit the returned list for display
+    count: entities.size,
+    artists: Array.from(entities).slice(0, 20), // Still limit the returned list for display
   };
 }
 
