@@ -50,12 +50,17 @@ export interface ChatMessage {
 // Available models
 export const AVAILABLE_MODELS = {
   // OpenAI models (using correct model names)
-  "gpt-4o": { provider: "openai", name: "GPT-4o" },
+  "gpt-4o-2024-08-06": { provider: "openai", name: "GPT-4o 2024-08-06" },
+  "gpt-4.1-2025-04-14": { provider: "openai", name: "GPT-4.1 2025-04-14" },
   "gpt-4o-mini": { provider: "openai", name: "GPT-4o Mini" },
-  "gpt-4-turbo": { provider: "openai", name: "GPT-4 Turbo" },
-  "gpt-3.5-turbo": { provider: "openai", name: "GPT-3.5 Turbo" },
+  "o3-2025-04-16": { provider: "openai", name: "O3 2025-04-16" },
+  "o3-mini-2025-01-31": { provider: "openai", name: "O3 Mini 2025-01-31" },
+  "o4-mini-2025-04-16": { provider: "openai", name: "O4 Mini 2025-04-16" },
+  "o1-2024-12-17": { provider: "openai", name: "O1 2024-12-17" },
 
   // Gemini models (using correct model names)
+  "gemini-2.5-pro": { provider: "gemini", name: "Gemini 2.5 Pro" },
+  "gemini-2.5-flash": { provider: "gemini", name: "Gemini 2.5 Flash" },
   "gemini-2.0-flash": { provider: "gemini", name: "Gemini 2.0 Flash" },
   "gemini-1.5-pro": { provider: "gemini", name: "Gemini 1.5 Pro" },
   "gemini-1.5-flash": { provider: "gemini", name: "Gemini 1.5 Flash" },
