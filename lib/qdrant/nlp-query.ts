@@ -578,6 +578,7 @@ Return ONLY a JSON object in this format:
 Examples:
 - "How many ${DEFAULT_CONFIG.itemType} by John Doe?" → {"type": "count", "target": "${DEFAULT_CONFIG.itemType}", "filter": {"${DEFAULT_CONFIG.entityField}": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
 - "What collections exist in my database?" → {"type": "collections", "target": "list", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "How many total vectors are across all collections?" → {"type": "count", "target": "total", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
 - "Find ${DEFAULT_CONFIG.itemType} in mycollection" → {"type": "search", "target": "${DEFAULT_CONFIG.itemType}", "filter": null, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
 - "Which ${DEFAULT_CONFIG.entityType} has the most ${DEFAULT_CONFIG.itemType}?" → {"type": "ranking", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 1, "scope": "database", "extractedCollection": null, "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
 - "Top 5 ${DEFAULT_CONFIG.entityType} by ${DEFAULT_CONFIG.itemType}_count in mycollection" → {"type": "top", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 5, "scope": "collection", "extractedCollection": "mycollection", "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
@@ -886,6 +887,16 @@ function inferIntentFromQuestion(
   // Database-level queries
   if (q.includes("collections") || q.includes("database")) {
     if (q.includes("how many") || q.includes("count")) {
+      // Check if they're asking about vectors/items ACROSS collections, not collections themselves
+      if (
+        q.includes("vector") ||
+        q.includes("item") ||
+        q.includes("record") ||
+        q.includes("total")
+      ) {
+        return { type: "count", target: "total", scope: "database" };
+      }
+      // Otherwise they're asking about collections count
       return { type: "count", target: "collections", scope: "database" };
     }
     if (
