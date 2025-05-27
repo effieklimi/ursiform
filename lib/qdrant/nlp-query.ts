@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { client } from "./db";
 import { EmbeddingProvider } from "../schemas";
 import { ConversationContext, ConversationTurn } from "../types";
@@ -8,7 +8,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Configuration for different database schemas
 interface DatabaseConfig {
@@ -567,14 +567,11 @@ Examples:
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const geminiModel = genAI.getGenerativeModel({
-        model: model || "gemini-2.0-flash", // Use specific model parameter
+      const result = await genAI.models.generateContent({
+        model: model || "gemini-2.0-flash",
+        contents: [{ text: systemPrompt }, { text: `Question: "${question}"` }],
       });
-      const result = await geminiModel.generateContent([
-        { text: systemPrompt },
-        { text: `Question: "${question}"` },
-      ]);
-      response = result.response.text();
+      response = result.text || "fallbackResponse";
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       try {
         const completion = await openai.chat.completions.create({
@@ -593,14 +590,14 @@ Examples:
         );
         // Auto-fallback to Gemini if OpenAI fails
         if (process.env.GEMINI_API_KEY) {
-          const geminiModel = genAI.getGenerativeModel({
+          const result = await genAI.models.generateContent({
             model: "gemini-2.0-flash",
+            contents: [
+              { text: systemPrompt },
+              { text: `Question: "${question}"` },
+            ],
           });
-          const result = await geminiModel.generateContent([
-            { text: systemPrompt },
-            { text: `Question: "${question}"` },
-          ]);
-          response = result.response.text();
+          response = result.text || "{}";
         } else {
           throw openaiError; // Re-throw if no Gemini fallback available
         }
@@ -1832,20 +1829,22 @@ Provide a natural language response based on these guidelines and the provided d
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const geminiModel = genAI.getGenerativeModel({
-        model: model || "gemini-2.0-flash", // Use specific model parameter
+      const result = await genAI.models.generateContent({
+        model: model || "gemini-2.0-flash",
+        contents: [{ text: systemPrompt }, { text: `Question: "${question}"` }],
       });
-      const result = await geminiModel.generateContent(systemPrompt);
-      response = result.response.text();
+      response = result.text || "fallbackResponse";
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       try {
         const completion = await openai.chat.completions.create({
           model: model || "gpt-3.5-turbo", // Use specific model parameter
-          messages: [{ role: "system", content: systemPrompt }],
-          temperature: 0.3,
-          max_tokens: 200,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Question: "${question}"` },
+          ],
+          temperature: 0,
         });
-        response = completion.choices[0].message.content || fallbackResponse;
+        response = completion.choices[0].message.content || "{}";
       } catch (openaiError: any) {
         console.warn(
           "OpenAI failed in generateResponse, trying Gemini fallback:",
@@ -1853,11 +1852,14 @@ Provide a natural language response based on these guidelines and the provided d
         );
         // Auto-fallback to Gemini if OpenAI fails
         if (process.env.GEMINI_API_KEY) {
-          const geminiModel = genAI.getGenerativeModel({
+          const result = await genAI.models.generateContent({
             model: "gemini-2.0-flash",
+            contents: [
+              { text: systemPrompt },
+              { text: `Question: "${question}"` },
+            ],
           });
-          const result = await geminiModel.generateContent(systemPrompt);
-          response = result.response.text();
+          response = result.text || "{}";
         } else {
           throw openaiError; // Re-throw if no Gemini fallback available
         }
@@ -2928,4 +2930,150 @@ async function countTotalItemsAcrossDatabase(
   }
 
   return result;
+}
+
+// Generic wrapper functions that call the existing artist-specific functions
+// These provide a generic interface while maintaining backward compatibility
+
+async function countItemsByEntityAcrossDatabase(
+  filter: any,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<{
+  count: number;
+  entity: string;
+  by_collection: Array<{ collection: string; count: number }>;
+}> {
+  // Call the existing artist-specific function
+  const result = await countImagesByArtistAcrossDatabase(filter);
+
+  // Return with generic naming
+  return {
+    count: result.count,
+    entity: result.artist, // Map artist to entity
+    by_collection: result.by_collection,
+  };
+}
+
+async function summarizeEntityAcrossDatabase(
+  filter: any,
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
+  // Call the existing artist-specific function
+  const result = await summarizeArtistAcrossDatabase(filter, limit);
+
+  // Return with generic field mapping if needed
+  return {
+    ...result,
+    entity: result.artist, // Map artist to entity for consistency
+  };
+}
+
+async function getTopEntitiesByItemCountAcrossDatabase(
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
+  // Call the existing artist-specific function
+  const result = await getTopArtistsByImageCountAcrossDatabase(limit);
+
+  // Map artist-specific fields to generic ones
+  return {
+    ...result,
+    top_entities: result.top_artists?.map((artist: any) => ({
+      name: artist.name,
+      item_count: artist.image_count, // Map image_count to item_count
+      collections: artist.collections,
+    })),
+    total_entities_found: result.total_artists_found,
+    max_item_count: result.max_image_count,
+    entities_with_max_count: result.artists_with_max_count?.map(
+      (artist: any) => ({
+        name: artist.name,
+        item_count: artist.image_count,
+      })
+    ),
+    total_items: result.total_images,
+    average_items_per_entity: result.average_images_per_artist,
+  };
+}
+
+async function countItemsByEntity(
+  collection: string,
+  filter: any,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<{ count: number; entity: string; sample_items: any[] }> {
+  // Call the existing artist-specific function
+  const result = await countImagesByArtist(collection, filter);
+
+  // Return with generic naming
+  return {
+    count: result.count,
+    entity: result.artist, // Map artist to entity
+    sample_items: result.sample_images, // Map sample_images to sample_items
+  };
+}
+
+async function summarizeEntityWork(
+  collection: string,
+  filter: any,
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
+  // Call the existing artist-specific function
+  const result = await summarizeArtistWork(collection, filter, limit);
+
+  // Return with generic field mapping
+  return {
+    ...result,
+    entity: result.artist, // Map artist to entity
+    total_items: result.total_images, // Map total_images to total_items
+    displayed_items: result.displayed_images, // Map displayed_images to displayed_items
+    items: result.images, // Map images to items
+  };
+}
+
+async function analyzeEntityWork(
+  collection: string,
+  filter: any,
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
+  // Call the existing artist-specific function
+  const result = await analyzeArtistWork(collection, filter, limit);
+
+  // Return with generic field mapping
+  return {
+    ...result,
+    entity: result.artist, // Map artist to entity
+    total_items: result.total_images, // Map total_images to total_items
+    sample_items: result.sample_images, // Map sample_images to sample_items
+  };
+}
+
+async function getTopEntitiesByItemCountInCollection(
+  collection: string,
+  limit: number,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): Promise<any> {
+  // Call the existing artist-specific function
+  const result = await getTopArtistsByImageCountInCollection(collection, limit);
+
+  // Map artist-specific fields to generic ones
+  return {
+    ...result,
+    top_entities: result.top_artists?.map((artist: any) => ({
+      name: artist.name,
+      item_count: artist.image_count, // Map image_count to item_count
+    })),
+    total_entities_found: result.total_artists_found,
+    max_item_count: result.max_image_count,
+    entities_with_max_count: result.artists_with_max_count?.map(
+      (artist: any) => ({
+        name: artist.name,
+        item_count: artist.image_count,
+      })
+    ),
+    total_items: result.total_images,
+    average_items_per_entity: result.average_images_per_artist,
+  };
 }

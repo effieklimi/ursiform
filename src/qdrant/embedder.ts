@@ -1,12 +1,12 @@
 import OpenAI from "openai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { EmbeddingProvider } from "../schemas";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export async function embed(
   text: string,
@@ -36,14 +36,19 @@ async function generateOpenAIEmbedding(text: string): Promise<number[]> {
 }
 
 async function generateGeminiEmbedding(text: string): Promise<number[]> {
-  // Use Gemini's text embedding model
-  const model = genAI.getGenerativeModel({ model: "embedding-001" });
+  // Use Gemini's text embedding model with the new SDK
+  const result = await genAI.models.embedContent({
+    model: "text-embedding-004", // Updated to a more recent embedding model
+    contents: text,
+  });
 
-  const result = await model.embedContent(text);
-
-  if (!result.embedding || !result.embedding.values) {
+  if (
+    !result.embeddings ||
+    !result.embeddings[0] ||
+    !result.embeddings[0].values
+  ) {
     throw new Error("No embedding returned from Gemini");
   }
 
-  return result.embedding.values;
+  return result.embeddings[0].values;
 }

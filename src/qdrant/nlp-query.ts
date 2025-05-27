@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { client } from "./db";
 import { EmbeddingProvider } from "../schemas";
 
@@ -7,7 +7,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 interface QueryIntent {
   type: "count" | "search" | "list" | "filter" | "describe";
@@ -97,14 +97,11 @@ Examples:
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-preview-04-17",
+      const result = await genAI.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [{ text: systemPrompt }, { text: `Question: "${question}"` }],
       });
-      const result = await model.generateContent([
-        { text: systemPrompt },
-        { text: `Question: "${question}"` },
-      ]);
-      response = result.response.text();
+      response = result.text || "{}";
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
@@ -333,11 +330,6 @@ Provide a concise, natural language response that directly answers the user's qu
     let response: string;
 
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-preview-04-17",
-      });
-      const result = await model.generateContent(systemPrompt);
-      response = result.response.text();
     } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",

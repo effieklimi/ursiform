@@ -15,7 +15,7 @@
     "docker:down": "docker compose down"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.2.1",
+    "@google/genai": "^0.3.1",
     "@qdrant/js-client-rest": "^1.7.0",
     "@radix-ui/react-slot": "^1.2.3",
     "autoprefixer": "^10.4.21",
