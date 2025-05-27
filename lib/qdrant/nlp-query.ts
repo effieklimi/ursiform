@@ -467,11 +467,33 @@ Available query types:
 - "top": find top N items or entities by some criteria
 - "ranking": rank items or entities by some criteria
 - "count": count items/entities matching criteria
-- "search": find specific items/entities
-- "list": list items or entities
+- "search": find/retrieve specific items (use this for "find items", "show items", "get items", "search items")
+- "list": enumerate entities only (use this for "list entities", "show entities", "what entities exist")
 - "summarize": provide summary of items/entities
 - "analyze": analyze patterns in items/entities
-- "aggregate": perform an aggregation (sum, average, min, max) on a numeric field of items.
+- "aggregate": perform an aggregation (sum, average, min, max) on a numeric field of items
+- "collections": list all collections in the database (use this for "what collections exist", "show collections", etc.)
+- "database": provide database overview
+
+IMPORTANT DISTINCTION: 
+- Use "search" when user wants to see/find/retrieve actual items/records/documents/images
+- Use "list" only when user specifically wants to enumerate entity names (like artist names, author names, etc.)
+
+IMPORTANT FOR TARGET SELECTION:
+- If user asks for "total vectors", "total records", or just "total" → use target: "total" (this indicates they want a general count, not specific to item type)
+- If user asks specifically for "${DEFAULT_CONFIG.itemType}" → use target: "${
+    DEFAULT_CONFIG.itemType
+  }"
+- If user asks for "items" generically → use target: "items"
+- If user asks for "${DEFAULT_CONFIG.entityType}" → use target: "${
+    DEFAULT_CONFIG.entityType
+  }"
+- For SEARCH operations: use target: "${
+    DEFAULT_CONFIG.itemType
+  }" or "items" when looking for actual records/files/documents
+- For LIST operations: use target: "${
+    DEFAULT_CONFIG.entityType
+  }" only when specifically wanting entity names
 
 IMPORTANT: Extract filter conditions from natural language:
 - "by [Name]", "from [Name]", "of [Name]" → {"${
@@ -555,6 +577,8 @@ Return ONLY a JSON object in this format:
 
 Examples:
 - "How many ${DEFAULT_CONFIG.itemType} by John Doe?" → {"type": "count", "target": "${DEFAULT_CONFIG.itemType}", "filter": {"${DEFAULT_CONFIG.entityField}": "John Doe"}, "limit": null, "scope": "database", "extractedCollection": null}
+- "What collections exist in my database?" → {"type": "collections", "target": "list", "filter": null, "limit": null, "scope": "database", "extractedCollection": null}
+- "Find ${DEFAULT_CONFIG.itemType} in mycollection" → {"type": "search", "target": "${DEFAULT_CONFIG.itemType}", "filter": null, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
 - "Which ${DEFAULT_CONFIG.entityType} has the most ${DEFAULT_CONFIG.itemType}?" → {"type": "ranking", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 1, "scope": "database", "extractedCollection": null, "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
 - "Top 5 ${DEFAULT_CONFIG.entityType} by ${DEFAULT_CONFIG.itemType}_count in mycollection" → {"type": "top", "target": "${DEFAULT_CONFIG.entityType}", "filter": null, "limit": 5, "scope": "collection", "extractedCollection": "mycollection", "sortBy": "${DEFAULT_CONFIG.itemType}_count", "sortOrder": "desc"}
 - "Summarize Alice Smith's work in mycollection" → {"type": "summarize", "target": "${DEFAULT_CONFIG.itemType}", "filter": {"${DEFAULT_CONFIG.entityField}": "Alice Smith"}, "limit": 10, "scope": "collection", "extractedCollection": "mycollection"}
@@ -864,7 +888,12 @@ function inferIntentFromQuestion(
     if (q.includes("how many") || q.includes("count")) {
       return { type: "count", target: "collections", scope: "database" };
     }
-    if (q.includes("list") || q.includes("what") || q.includes("show")) {
+    if (
+      q.includes("list") ||
+      q.includes("what") ||
+      q.includes("show") ||
+      q.includes("exist")
+    ) {
       return { type: "collections", target: "list", scope: "database" };
     }
     if (q.includes("describe")) {
@@ -1125,11 +1154,7 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
       if (intent.target === config.entityType || intent.target === "entities") {
         return await listEntitiesAcrossDatabase(intent.limit || 50, config);
       }
-      if (
-        intent.target === config.itemType ||
-        intent.target === "items" ||
-        intent.target === "vectors" // Keep vectors for a bit for compatibility with old error message context
-      ) {
+      if (intent.target === config.itemType || intent.target === "items") {
         const collectionName = await getCollectionWithMostItems();
         if (collectionName) {
           return await listItems(collectionName, intent.limit || 20, config);
@@ -1274,7 +1299,30 @@ async function executeCollectionQuery(
       }
 
     case "search":
-      // Ensure filter is passed correctly, searchItems handles entityField internally
+      // Check if this is a "find all items" query (no filter, asking for items)
+      if (
+        !intent.filter &&
+        (intent.target === config.itemType || intent.target === "items")
+      ) {
+        // This is likely "find all images" - user wants to see the collection contents
+        const totalCount = await countTotal(collection);
+        const sampleItems = await searchItems(
+          collection,
+          intent.filter,
+          Math.min(intent.limit || 20, 50), // Show more items but cap at 50
+          config
+        );
+        return {
+          total_count: totalCount.count,
+          displayed_count: sampleItems.count,
+          items: sampleItems.items,
+          message:
+            totalCount.count > (intent.limit || 20)
+              ? `Showing first ${sampleItems.count} of ${totalCount.count} total ${config.itemType}`
+              : undefined,
+        };
+      }
+      // Regular search with filters
       return await searchItems(
         collection,
         intent.filter,
@@ -1815,6 +1863,13 @@ The user asked: "${question}"
 The query intent was: ${JSON.stringify(intent, null, 2)}
 The data returned is: ${JSON.stringify(data, null, 2)}
 
+RESPONSE LOGIC FOR SEARCH OPERATIONS (intent.type === 'search'):
+- When data.total_count exists: This is a "find all items" query - mention the total count first, then show sample files
+- When data.items exists: Describe the actual items found, focusing on filenames, URLs, or other item details
+- Show item count and some sample file names or identifiers  
+- DO NOT just list entity names (like artist names) - show actual file/item information
+- Example: "Found 5417 images in the collection. Sample files: image1.jpg, artwork_2.png, photo_3.webp..."
+
 OTHER GUIDELINES:
 - Be concise.
 - For lists not covered above, summarize if long.
@@ -2089,9 +2144,54 @@ function generateFallbackResponse(
 
     case "search":
     case "filter":
+      if (safeData.total_count !== undefined) {
+        // This is a "find all items" response with total count
+        const sampleFiles =
+          safeData.items
+            ?.slice(0, 5)
+            .map((item: any) => {
+              const filename =
+                item[config.additionalFields?.filename || "file_name"] ||
+                item.filename ||
+                item.name ||
+                item.id;
+              return filename;
+            })
+            .filter(Boolean) || [];
+
+        return `Found ${safeData.total_count} ${
+          config.itemType + pluralize(safeData.total_count)
+        } in the collection${
+          sampleFiles.length > 0
+            ? `. Sample files: ${sampleFiles.join(", ")}`
+            : ""
+        }${safeData.message ? `. ${safeData.message}` : ""}.`;
+      }
+      if (safeData.items && safeData.items.length > 0) {
+        const sampleFiles = safeData.items
+          .slice(0, 5)
+          .map((item: any) => {
+            // Try to get filename from various possible fields
+            const filename =
+              item[config.additionalFields?.filename || "file_name"] ||
+              item.filename ||
+              item.name ||
+              item.id;
+            return filename;
+          })
+          .filter(Boolean);
+
+        return `I found ${safeData.count || 0} ${
+          config.itemType + pluralize(safeData.count || 0)
+        } in the collection${
+          sampleFiles.length > 0
+            ? `. Sample files: ${sampleFiles.join(", ")}`
+            : ""
+        }.`;
+      }
       return `I found ${safeData.count || 0} ${
         config.itemType + pluralize(safeData.count || 0)
-      } matching your criteria.`; // Added pluralize
+      } matching your criteria.`;
 
     case "summarize":
       if (intent.filter?.name) {
