@@ -14,8 +14,22 @@ export async function GET(req: NextRequest) {
 
   try {
     // Test Qdrant connection
-    const protocol = qdrantUrl.includes("localhost") ? "http" : "https";
-    const baseUrl = `${protocol}://${qdrantUrl}`;
+    let baseUrl = qdrantUrl;
+
+    // Handle different URL formats
+    if (!qdrantUrl.startsWith("http://") && !qdrantUrl.startsWith("https://")) {
+      // If no protocol specified, determine based on the URL
+      const protocol =
+        qdrantUrl.includes("localhost") || qdrantUrl.includes("127.0.0.1")
+          ? "http"
+          : "https";
+      baseUrl = `${protocol}://${qdrantUrl}`;
+    }
+
+    // Remove any trailing port if it's already in a full URL for cloud instances
+    if (baseUrl.includes(".cloud.qdrant.io:6333")) {
+      baseUrl = baseUrl.replace(":6333", "");
+    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -25,21 +39,35 @@ export async function GET(req: NextRequest) {
       headers["api-key"] = qdrantApiKey;
     }
 
+    console.log(`Testing Qdrant connection to: ${baseUrl}/collections`);
+    console.log(`Headers:`, Object.keys(headers));
+
     const response = await fetch(`${baseUrl}/collections`, {
       method: "GET",
       headers,
       // Add timeout
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000), // Increased timeout for cloud instances
     });
 
     databaseConnected = response.ok;
     if (!response.ok) {
-      databaseError = `HTTP ${response.status}: ${response.statusText}`;
+      const responseText = await response
+        .text()
+        .catch(() => "Unable to read response");
+      databaseError = `HTTP ${response.status}: ${response.statusText} - ${responseText}`;
+      console.error(`Qdrant connection failed: ${databaseError}`);
+    } else {
+      console.log("Qdrant connection successful");
     }
   } catch (error) {
     databaseConnected = false;
-    databaseError =
-      error instanceof Error ? error.message : "Connection failed";
+    if (error instanceof Error) {
+      databaseError = `${error.name}: ${error.message}`;
+      console.error(`Qdrant connection error:`, error);
+    } else {
+      databaseError = "Unknown connection error";
+      console.error(`Qdrant connection error:`, error);
+    }
   }
 
   return NextResponse.json({

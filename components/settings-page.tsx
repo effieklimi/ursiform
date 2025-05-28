@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Github,
   Globe,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -62,53 +63,46 @@ export function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
 
-        // Extract API key status from environment or response
+        // Use only server-side data from health endpoint
         setApiKeyStatus({
-          openai:
-            !!process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
-            data.openai_available ||
-            false,
-          gemini:
-            !!process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-            data.gemini_available ||
-            false,
+          openai: data.openai_available || false,
+          gemini: data.gemini_available || false,
         });
 
-        // Extract database info
+        // Extract database info from server response
         setDatabaseInfo({
           connected: data.database_connected || false,
-          url:
-            data.database_url ||
-            process.env.NEXT_PUBLIC_QDRANT_URL ||
-            "localhost:6333",
-          hasApiKey:
-            !!data.database_api_key || !!process.env.NEXT_PUBLIC_QDRANT_API_KEY,
+          url: data.database_url || "localhost:6333",
+          hasApiKey: data.database_api_key || false,
           error: data.database_error,
         });
       } else {
-        // Fallback to environment variables
+        // If health endpoint fails, show unknown status
         setApiKeyStatus({
-          openai: !!process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-          gemini: !!process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+          openai: false,
+          gemini: false,
         });
 
         setDatabaseInfo({
           connected: false,
-          url: process.env.NEXT_PUBLIC_QDRANT_URL || "localhost:6333",
-          hasApiKey: !!process.env.NEXT_PUBLIC_QDRANT_API_KEY,
-          error: "Health check failed",
+          url: "localhost:6333",
+          hasApiKey: false,
+          error: "Health check endpoint failed",
         });
       }
     } catch (error) {
       console.error("Failed to check API status:", error);
-      // Set based on environment variables as fallback
+      // Set unknown status on error
       setApiKeyStatus({
-        openai:
-          typeof window !== "undefined" &&
-          !!window.localStorage.getItem("openai_configured"),
-        gemini:
-          typeof window !== "undefined" &&
-          !!window.localStorage.getItem("gemini_configured"),
+        openai: false,
+        gemini: false,
+      });
+
+      setDatabaseInfo({
+        connected: false,
+        url: "localhost:6333",
+        hasApiKey: false,
+        error: "Network error connecting to health check",
       });
     } finally {
       setIsLoading(false);
@@ -216,9 +210,25 @@ export function SettingsPage() {
                     </div>
                   </div>
                   <Badge
-                    variant={apiKeyStatus.openai ? "default" : "destructive"}
+                    variant={
+                      apiKeyStatus.openai
+                        ? "default"
+                        : isLoading
+                        ? "secondary"
+                        : "outline"
+                    }
+                    className="flex items-center gap-1"
                   >
-                    {apiKeyStatus.openai ? "Configured" : "Missing"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking...
+                      </>
+                    ) : apiKeyStatus.openai ? (
+                      "Configured"
+                    ) : (
+                      "Not Configured"
+                    )}
                   </Badge>
                 </div>
 
@@ -235,9 +245,25 @@ export function SettingsPage() {
                     </div>
                   </div>
                   <Badge
-                    variant={apiKeyStatus.gemini ? "default" : "destructive"}
+                    variant={
+                      apiKeyStatus.gemini
+                        ? "default"
+                        : isLoading
+                        ? "secondary"
+                        : "outline"
+                    }
+                    className="flex items-center gap-1"
                   >
-                    {apiKeyStatus.gemini ? "Configured" : "Missing"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking...
+                      </>
+                    ) : apiKeyStatus.gemini ? (
+                      "Configured"
+                    ) : (
+                      "Not Configured"
+                    )}
                   </Badge>
                 </div>
               </div>
@@ -267,23 +293,54 @@ export function SettingsPage() {
                     <div className="text-xs text-muted-foreground flex items-center gap-1">
                       <span>URL: {databaseInfo.url}</span>
                       {databaseInfo.url && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4"
-                          onClick={() =>
-                            window.open(`http://${databaseInfo.url}`, "_blank")
-                          }
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
+                        <>
+                          <a
+                            href={(() => {
+                              const url = databaseInfo.url!;
+                              const protocol =
+                                url.includes("localhost") ||
+                                url.includes("127.0.0.1")
+                                  ? "http"
+                                  : "https";
+                              const baseUrl = url.startsWith("http")
+                                ? url
+                                : `${protocol}://${url}`;
+                              return (
+                                baseUrl.replace(":6333", "") +
+                                "/dashboard#/collections"
+                              );
+                            })()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center h-6 w-6 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                            onClick={() => console.log("Link clicked!")}
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        </>
                       )}
                     </div>
                   </div>
                   <Badge
-                    variant={databaseInfo.connected ? "default" : "destructive"}
+                    variant={
+                      databaseInfo.connected
+                        ? "default"
+                        : isLoading
+                        ? "secondary"
+                        : "outline"
+                    }
+                    className="flex items-center gap-1"
                   >
-                    {databaseInfo.connected ? "Connected" : "Disconnected"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : databaseInfo.connected ? (
+                      "Connected"
+                    ) : (
+                      "Disconnected"
+                    )}
                   </Badge>
                 </div>
 
