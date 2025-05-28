@@ -21,6 +21,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ReactMarkdown from "react-markdown";
 import {
   ChatMessage,
@@ -584,50 +593,64 @@ export default function ChatInterface() {
                   <label className="text-xs font-medium mb-1 block text-muted-foreground">
                     AI Model
                   </label>
-                  <select
+                  <Select
                     value={selectedModel}
-                    onChange={(e) =>
-                      setSelectedModel(e.target.value as ModelKey)
-                    }
-                    className="w-full p-2 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    onValueChange={(value: ModelKey) => setSelectedModel(value)}
                   >
-                    <optgroup label="OpenAI Models">
-                      {Object.entries(AVAILABLE_MODELS)
-                        .filter(([_, info]) => info.provider === "openai")
-                        .map(([key, info]) => (
-                          <option key={key} value={key}>
-                            {info.name}
-                          </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label="Gemini Models">
-                      {Object.entries(AVAILABLE_MODELS)
-                        .filter(([_, info]) => info.provider === "gemini")
-                        .map(([key, info]) => (
-                          <option key={key} value={key}>
-                            {info.name}
-                          </option>
-                        ))}
-                    </optgroup>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>OpenAI Models</SelectLabel>
+                        {Object.entries(AVAILABLE_MODELS)
+                          .filter(([_, info]) => info.provider === "openai")
+                          .map(([key, info]) => (
+                            <SelectItem key={key} value={key}>
+                              {info.name}
+                            </SelectItem>
+                          ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Gemini Models</SelectLabel>
+                        {Object.entries(AVAILABLE_MODELS)
+                          .filter(([_, info]) => info.provider === "gemini")
+                          .map(([key, info]) => (
+                            <SelectItem key={key} value={key}>
+                              {info.name}
+                            </SelectItem>
+                          ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
                   <label className="text-xs font-medium mb-1 block text-muted-foreground">
                     Collection (Optional)
                   </label>
-                  <select
-                    value={selectedCollection}
-                    onChange={(e) => setSelectedCollection(e.target.value)}
-                    className="w-full p-2 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  <Select
+                    value={selectedCollection || "database-level"}
+                    onValueChange={(value: string) =>
+                      setSelectedCollection(
+                        value === "database-level" ? "" : value
+                      )
+                    }
                   >
-                    <option value="">Database-level query</option>
-                    {collections.map((collection) => (
-                      <option key={collection} value={collection}>
-                        {collection}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Database-level query" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="database-level">
+                        Database-level query
+                      </SelectItem>
+                      {collections.map((collection) => (
+                        <SelectItem key={collection} value={collection}>
+                          {collection}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Conversation Context Indicator */}
