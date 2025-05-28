@@ -40,6 +40,7 @@ import {
   ConversationContext,
 } from "@/lib/types";
 import { SideNavigation, type PageType } from "@/components/side-navigation";
+import { SettingsPage } from "@/components/settings-page";
 
 interface DynamicExamples {
   database: string[];
@@ -70,108 +71,6 @@ function ModeToggle() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function SettingsPage() {
-  return (
-    <div className="flex-1 flex flex-col bg-background overflow-hidden">
-      {/* Header */}
-      <div className="border-b bg-background p-4">
-        <div className="flex items-center gap-2">
-          <Settings className="w-5 h-5" />
-          <h1 className="text-lg font-semibold">Settings</h1>
-          <div className="ml-auto flex items-center gap-2">
-            <ModeToggle />
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="max-w-2xl space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Application Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Default AI Model
-                </label>
-                <Select defaultValue="gpt-4o-mini">
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select default model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>OpenAI Models</SelectLabel>
-                      {Object.entries(AVAILABLE_MODELS)
-                        .filter(([_, info]) => info.provider === "openai")
-                        .map(([key, info]) => (
-                          <SelectItem key={key} value={key}>
-                            {info.name}
-                          </SelectItem>
-                        ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Gemini Models</SelectLabel>
-                      {Object.entries(AVAILABLE_MODELS)
-                        .filter(([_, info]) => info.provider === "gemini")
-                        .map(([key, info]) => (
-                          <SelectItem key={key} value={key}>
-                            {info.name}
-                          </SelectItem>
-                        ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Theme</label>
-                <div className="flex items-center space-x-2">
-                  <ModeToggle />
-                  <span className="text-sm text-muted-foreground">
-                    Toggle between light, dark, and system theme
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Database Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Qdrant Connection
-                </label>
-                <div className="text-sm text-muted-foreground">
-                  Database connection settings are configured via environment
-                  variables.
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>About</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground space-y-2">
-                <p>Vector Database Chat Interface</p>
-                <p>Natural language interface for Qdrant vector databases</p>
-                <p>Built with Next.js, shadcn/ui, and Tailwind CSS</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
   );
 }
 
