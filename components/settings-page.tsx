@@ -137,8 +137,8 @@ export function SettingsPage() {
       </div>
 
       {/* Settings Content - Centered */}
-      <div className="flex-1 overflow-y-auto flex items-center justify-center p-6">
-        <div className="w-full max-w-2xl space-y-6">
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="w-full max-w-2xl mx-auto space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Application Settings</CardTitle>
