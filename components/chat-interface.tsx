@@ -1,11 +1,26 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Clock, Database, Search } from "lucide-react";
+import {
+  Send,
+  Bot,
+  User,
+  Clock,
+  Database,
+  Search,
+  Moon,
+  Sun,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import ReactMarkdown from "react-markdown";
 import {
   ChatMessage,
@@ -17,6 +32,48 @@ import {
 interface DynamicExamples {
   database: string[];
   collection: string[];
+}
+
+function ModeToggle() {
+  const [theme, setThemeState] = useState<"light" | "dark" | "system">(
+    "system"
+  );
+
+  useEffect(() => {
+    const isDarkMode = document.documentElement.classList.contains("dark");
+    setThemeState(isDarkMode ? "dark" : "light");
+  }, []);
+
+  useEffect(() => {
+    const isDark =
+      theme === "dark" ||
+      (theme === "system" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList[isDark ? "add" : "remove"]("dark");
+  }, [theme]);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon">
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setThemeState("light")}>
+          Light
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setThemeState("dark")}>
+          Dark
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setThemeState("system")}>
+          System
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export default function ChatInterface() {
@@ -278,17 +335,17 @@ export default function ChatInterface() {
     if (queryType === "collections" && data.collections) {
       return (
         <div className="mt-2 space-y-1">
-          <div className="text-sm font-medium text-gray-300">
+          <div className="text-sm font-medium text-muted-foreground">
             Collections Found:
           </div>
           {data.collections.map((collection: any, index: number) => (
             <div
               key={index}
-              className="text-sm bg-gray-800 rounded px-2 py-1 border border-gray-700"
+              className="text-sm bg-muted rounded px-2 py-1 border"
             >
-              <span className="font-medium text-white">{collection.name}</span>
+              <span className="font-medium">{collection.name}</span>
               {collection.vectors_count !== undefined && (
-                <span className="text-gray-400 ml-2">
+                <span className="text-muted-foreground ml-2">
                   ({collection.vectors_count.toLocaleString()} vectors)
                 </span>
               )}
@@ -302,15 +359,15 @@ export default function ChatInterface() {
       return (
         <div className="mt-2 space-y-2">
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="text-gray-300">
+            <div className="text-muted-foreground">
               Total Collections:{" "}
-              <span className="font-medium text-white">
+              <span className="font-medium text-foreground">
                 {data.total_collections}
               </span>
             </div>
-            <div className="text-gray-300">
+            <div className="text-muted-foreground">
               Total Vectors:{" "}
-              <span className="font-medium text-white">
+              <span className="font-medium text-foreground">
                 {data.total_vectors?.toLocaleString()}
               </span>
             </div>
@@ -325,31 +382,33 @@ export default function ChatInterface() {
     ) {
       return (
         <div className="mt-2 text-sm">
-          <Badge variant="secondary" className="bg-gray-700 text-gray-200">
-            {data.count.toLocaleString()} items
-          </Badge>
+          <Badge variant="secondary">{data.count.toLocaleString()} items</Badge>
           {data.artist && (
-            <div className="mt-1 text-gray-300">
+            <div className="mt-1 text-muted-foreground">
               Artist:{" "}
-              <span className="text-white font-medium">{data.artist}</span>
+              <span className="text-foreground font-medium">{data.artist}</span>
             </div>
           )}
           {data.by_collection && data.by_collection.length > 0 && (
             <div className="mt-2 space-y-1">
-              <div className="text-xs text-gray-400">Found in collections:</div>
+              <div className="text-xs text-muted-foreground">
+                Found in collections:
+              </div>
               {data.by_collection.map((col: any, index: number) => (
                 <div
                   key={index}
-                  className="text-xs bg-gray-800 rounded px-2 py-1 border border-gray-700"
+                  className="text-xs bg-muted rounded px-2 py-1 border"
                 >
-                  <span className="text-white">{col.collection}</span>:{" "}
-                  <span className="text-gray-300">{col.count} images</span>
+                  <span className="text-foreground">{col.collection}</span>:{" "}
+                  <span className="text-muted-foreground">
+                    {col.count} images
+                  </span>
                 </div>
               ))}
             </div>
           )}
           {data.artists && data.artists.length > 0 && (
-            <div className="mt-1 text-gray-300">
+            <div className="mt-1 text-muted-foreground">
               Artists: {data.artists.slice(0, 5).join(", ")}
               {data.artists.length > 5 && "..."}
             </div>
@@ -361,41 +420,43 @@ export default function ChatInterface() {
     if (queryType === "summarize") {
       return (
         <div className="mt-2 space-y-2">
-          <div className="text-sm font-medium text-gray-300">
+          <div className="text-sm font-medium text-muted-foreground">
             Summary of {data.artist}'s Work:
           </div>
-          <div className="bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+          <div className="bg-muted rounded p-3 border space-y-2">
             <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="text-gray-300">
+              <div className="text-muted-foreground">
                 Total Images:{" "}
-                <span className="text-white font-medium">
+                <span className="text-foreground font-medium">
                   {data.total_images || 0}
                 </span>
               </div>
-              <div className="text-gray-300">
+              <div className="text-muted-foreground">
                 Displayed:{" "}
-                <span className="text-white font-medium">
+                <span className="text-foreground font-medium">
                   {data.displayed_images || 0}
                 </span>
               </div>
             </div>
             {data.collections_found && (
-              <div className="text-xs text-gray-300">
+              <div className="text-xs text-muted-foreground">
                 Found in:{" "}
-                <span className="text-white">
+                <span className="text-foreground">
                   {data.collections_found} collections
                 </span>
               </div>
             )}
             {data.file_types && data.file_types.length > 0 && (
-              <div className="text-xs text-gray-300">
+              <div className="text-xs text-muted-foreground">
                 File Types:{" "}
-                <span className="text-white">{data.file_types.join(", ")}</span>
+                <span className="text-foreground">
+                  {data.file_types.join(", ")}
+                </span>
               </div>
             )}
             {data.sample_images && data.sample_images.length > 0 && (
               <div className="space-y-1">
-                <div className="text-xs font-medium text-gray-300">
+                <div className="text-xs font-medium text-muted-foreground">
                   Sample Images:
                 </div>
                 {data.sample_images
@@ -403,11 +464,11 @@ export default function ChatInterface() {
                   .map((img: any, index: number) => (
                     <div
                       key={index}
-                      className="text-xs bg-gray-900 rounded px-2 py-1 border border-gray-600"
+                      className="text-xs bg-card rounded px-2 py-1 border"
                     >
-                      <span className="text-blue-300">{img.filename}</span>
+                      <span className="text-primary">{img.filename}</span>
                       {img.collection && (
-                        <span className="text-gray-400 ml-1">
+                        <span className="text-muted-foreground ml-1">
                           ({img.collection})
                         </span>
                       )}
@@ -423,31 +484,28 @@ export default function ChatInterface() {
     if (queryType === "analyze") {
       return (
         <div className="mt-2 space-y-2">
-          <div className="text-sm font-medium text-gray-300">
+          <div className="text-sm font-medium text-muted-foreground">
             Analysis of {data.artist}'s Work:
           </div>
-          <div className="bg-gray-800 rounded p-3 border border-gray-700 space-y-2">
+          <div className="bg-muted rounded p-3 border space-y-2">
             <div className="text-xs">
-              <span className="text-gray-300">Total Images: </span>
-              <span className="text-white font-medium">
+              <span className="text-muted-foreground">Total Images: </span>
+              <span className="text-foreground font-medium">
                 {data.total_images || 0}
               </span>
             </div>
             {data.file_type_distribution &&
               Object.keys(data.file_type_distribution).length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-xs font-medium text-gray-300">
+                  <div className="text-xs font-medium text-muted-foreground">
                     File Types:
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(data.file_type_distribution).map(
                       ([type, count]: [string, any]) => (
-                        <span
-                          key={type}
-                          className="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-700/50"
-                        >
+                        <Badge key={type} variant="outline" className="text-xs">
                           {type}: {count}
-                        </span>
+                        </Badge>
                       )
                     )}
                   </div>
@@ -456,14 +514,17 @@ export default function ChatInterface() {
             {data.common_naming_patterns &&
               Object.keys(data.common_naming_patterns).length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-xs font-medium text-gray-300">
+                  <div className="text-xs font-medium text-muted-foreground">
                     Common Patterns:
                   </div>
                   {Object.entries(data.common_naming_patterns)
                     .slice(0, 3)
                     .map(([pattern, count]: [string, any]) => (
-                      <div key={pattern} className="text-xs text-gray-300">
-                        <code className="bg-gray-900 px-1 rounded text-green-300">
+                      <div
+                        key={pattern}
+                        className="text-xs text-muted-foreground"
+                      >
+                        <code className="bg-card px-1 rounded text-primary">
                           "{pattern}"
                         </code>{" "}
                         - {count} files
@@ -479,7 +540,7 @@ export default function ChatInterface() {
     if (queryType === "search" && data.results_by_collection) {
       return (
         <div className="mt-2 space-y-2">
-          <div className="text-sm font-medium text-gray-300">
+          <div className="text-sm font-medium text-muted-foreground">
             Search Results ({data.total_count} total):
           </div>
           {data.results_by_collection
@@ -487,12 +548,15 @@ export default function ChatInterface() {
             .map((result: any, index: number) => (
               <div
                 key={index}
-                className="text-sm bg-gray-800 rounded px-2 py-1 border border-gray-700"
+                className="text-sm bg-muted rounded px-2 py-1 border"
               >
-                <span className="font-medium text-white">
+                <span className="font-medium text-foreground">
                   {result.collection}
                 </span>
-                : <span className="text-gray-300">{result.count} matches</span>
+                :{" "}
+                <span className="text-muted-foreground">
+                  {result.count} matches
+                </span>
               </div>
             ))}
         </div>
@@ -503,21 +567,21 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-900 text-white overflow-hidden">
+    <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
       <div className="flex h-full">
         {/* Model Selection Panel */}
-        <div className="w-80 flex-shrink-0 border-r border-gray-700 bg-gray-900 overflow-y-auto">
+        <div className="w-80 flex-shrink-0 border-r bg-background overflow-y-auto">
           <div className="p-4 space-y-4">
-            <Card className="bg-gray-900 border-gray-700">
+            <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                <CardTitle className="flex items-center gap-2 text-sm">
                   <Bot className="w-4 h-4" />
                   Query Settings
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium mb-1 block text-gray-300">
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">
                     AI Model
                   </label>
                   <select
@@ -525,7 +589,7 @@ export default function ChatInterface() {
                     onChange={(e) =>
                       setSelectedModel(e.target.value as ModelKey)
                     }
-                    className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                    className="w-full p-2 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <optgroup label="OpenAI Models">
                       {Object.entries(AVAILABLE_MODELS)
@@ -549,13 +613,13 @@ export default function ChatInterface() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium mb-1 block text-gray-300">
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">
                     Collection (Optional)
                   </label>
                   <select
                     value={selectedCollection}
                     onChange={(e) => setSelectedCollection(e.target.value)}
-                    className="w-full p-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                    className="w-full p-2 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="">Database-level query</option>
                     {collections.map((collection) => (
@@ -570,40 +634,46 @@ export default function ChatInterface() {
                 {(conversationContext.lastEntity ||
                   conversationContext.lastCollection ||
                   conversationContext.conversationHistory.length > 0) && (
-                  <div className="border-t border-gray-700 pt-3">
-                    <label className="text-xs font-medium mb-2 block text-gray-300">
+                  <div className="border-t pt-3">
+                    <label className="text-xs font-medium mb-2 block text-muted-foreground">
                       Conversation Context
                     </label>
                     <div className="space-y-1">
                       {conversationContext.lastEntity && (
-                        <div className="text-xs bg-purple-900/30 rounded px-2 py-1 border border-purple-700/50">
-                          <span className="text-purple-300">Entity:</span>{" "}
-                          <span className="text-white">
+                        <div className="text-xs bg-accent rounded px-2 py-1 border">
+                          <span className="text-accent-foreground">
+                            Entity:
+                          </span>{" "}
+                          <span className="text-foreground">
                             {conversationContext.lastEntity}
                           </span>
                         </div>
                       )}
                       {conversationContext.lastCollection && (
-                        <div className="text-xs bg-blue-900/30 rounded px-2 py-1 border border-blue-700/50">
-                          <span className="text-blue-300">Collection:</span>{" "}
-                          <span className="text-white">
+                        <div className="text-xs bg-accent rounded px-2 py-1 border">
+                          <span className="text-accent-foreground">
+                            Collection:
+                          </span>{" "}
+                          <span className="text-foreground">
                             {conversationContext.lastCollection}
                           </span>
                         </div>
                       )}
                       {conversationContext.conversationHistory.length > 0 && (
-                        <div className="text-xs bg-gray-800/50 rounded px-2 py-1 border border-gray-600">
-                          <span className="text-gray-300">History:</span>{" "}
-                          <span className="text-white">
+                        <div className="text-xs bg-muted rounded px-2 py-1 border">
+                          <span className="text-muted-foreground">
+                            History:
+                          </span>{" "}
+                          <span className="text-foreground">
                             {conversationContext.conversationHistory.length}{" "}
                             turns
                           </span>
                         </div>
                       )}
                       {conversationContext.currentTopic && (
-                        <div className="text-xs bg-green-900/30 rounded px-2 py-1 border border-green-700/50">
-                          <span className="text-green-300">Topic:</span>{" "}
-                          <span className="text-white">
+                        <div className="text-xs bg-accent rounded px-2 py-1 border">
+                          <span className="text-accent-foreground">Topic:</span>{" "}
+                          <span className="text-foreground">
                             {conversationContext.currentTopic}
                           </span>
                         </div>
@@ -613,7 +683,7 @@ export default function ChatInterface() {
                       onClick={() =>
                         setConversationContext({ conversationHistory: [] })
                       }
-                      className="text-xs text-gray-400 hover:text-white mt-2 underline"
+                      className="text-xs text-muted-foreground hover:text-foreground mt-2 underline"
                     >
                       Clear Context
                     </button>
@@ -622,16 +692,16 @@ export default function ChatInterface() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gray-900 border-gray-700">
+            <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-gray-100 text-sm">
+                <CardTitle className="flex items-center gap-2 text-sm">
                   <Database className="w-4 h-4" />
                   Example Queries
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <div className="text-xs font-medium mb-1 text-gray-300">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground">
                     Database-level:
                   </div>
                   <div className="space-y-1">
@@ -639,7 +709,7 @@ export default function ChatInterface() {
                       <button
                         key={index}
                         onClick={() => handleExampleClick(example)}
-                        className="text-xs text-left w-full p-2 bg-blue-900/30 hover:bg-blue-800/40 rounded border border-blue-700/50 text-blue-300 transition-colors"
+                        className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                       >
                         {example}
                       </button>
@@ -648,7 +718,7 @@ export default function ChatInterface() {
                 </div>
 
                 <div>
-                  <div className="text-xs font-medium mb-1 text-gray-300">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground">
                     Collection-specific:
                   </div>
                   <div className="space-y-1">
@@ -656,7 +726,7 @@ export default function ChatInterface() {
                       <button
                         key={index}
                         onClick={() => handleExampleClick(example)}
-                        className="text-xs text-left w-full p-2 bg-green-900/30 hover:bg-green-800/40 rounded border border-green-700/50 text-green-300 transition-colors"
+                        className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                       >
                         {example}
                       </button>
@@ -666,7 +736,7 @@ export default function ChatInterface() {
 
                 {/* Conversation Examples */}
                 <div>
-                  <div className="text-xs font-medium mb-1 text-gray-300">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground">
                     Conversational:
                   </div>
                   <div className="space-y-1">
@@ -674,7 +744,7 @@ export default function ChatInterface() {
                       onClick={() =>
                         handleExampleClick("Show me Chris Dyer's work")
                       }
-                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                     >
                       Show me Chris Dyer's work
                     </button>
@@ -682,19 +752,19 @@ export default function ChatInterface() {
                       onClick={() =>
                         handleExampleClick("How many items do they have?")
                       }
-                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                     >
                       How many items do they have?
-                      <span className="text-purple-400 ml-1">
+                      <span className="text-muted-foreground ml-1">
                         (after asking about an artist)
                       </span>
                     </button>
                     <button
                       onClick={() => handleExampleClick("What about Alice?")}
-                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                     >
                       What about Alice?
-                      <span className="text-purple-400 ml-1">
+                      <span className="text-muted-foreground ml-1">
                         (continuing conversation)
                       </span>
                     </button>
@@ -702,10 +772,10 @@ export default function ChatInterface() {
                       onClick={() =>
                         handleExampleClick("Also show me their latest work")
                       }
-                      className="text-xs text-left w-full p-2 bg-purple-900/30 hover:bg-purple-800/40 rounded border border-purple-700/50 text-purple-300 transition-colors"
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
                     >
                       Also show me their latest work
-                      <span className="text-purple-400 ml-1">
+                      <span className="text-muted-foreground ml-1">
                         (using pronoun reference)
                       </span>
                     </button>
@@ -718,33 +788,33 @@ export default function ChatInterface() {
             {(conversationContext.lastEntity ||
               conversationContext.lastCollection ||
               conversationContext.conversationHistory.length > 0) && (
-              <Card className="bg-gray-900 border-yellow-700">
+              <Card className="border-destructive">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-yellow-300 text-sm">
+                  <CardTitle className="flex items-center gap-2 text-destructive text-sm">
                     🧠 Debug: Conversation Context
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {conversationContext.lastEntity && (
                     <div className="text-xs">
-                      <span className="text-yellow-300">Last Entity:</span>{" "}
-                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      <span className="text-destructive">Last Entity:</span>{" "}
+                      <span className="text-foreground font-mono bg-muted px-1 rounded">
                         {conversationContext.lastEntity}
                       </span>
                     </div>
                   )}
                   {conversationContext.lastCollection && (
                     <div className="text-xs">
-                      <span className="text-yellow-300">Last Collection:</span>{" "}
-                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      <span className="text-destructive">Last Collection:</span>{" "}
+                      <span className="text-foreground font-mono bg-muted px-1 rounded">
                         {conversationContext.lastCollection}
                       </span>
                     </div>
                   )}
                   {conversationContext.lastQueryType && (
                     <div className="text-xs">
-                      <span className="text-yellow-300">Last Query:</span>{" "}
-                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      <span className="text-destructive">Last Query:</span>{" "}
+                      <span className="text-foreground font-mono bg-muted px-1 rounded">
                         {conversationContext.lastQueryType}{" "}
                         {conversationContext.lastTarget}
                       </span>
@@ -752,15 +822,15 @@ export default function ChatInterface() {
                   )}
                   {conversationContext.currentTopic && (
                     <div className="text-xs">
-                      <span className="text-yellow-300">Current Topic:</span>{" "}
-                      <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                      <span className="text-destructive">Current Topic:</span>{" "}
+                      <span className="text-foreground font-mono bg-muted px-1 rounded">
                         {conversationContext.currentTopic}
                       </span>
                     </div>
                   )}
                   <div className="text-xs">
-                    <span className="text-yellow-300">History:</span>{" "}
-                    <span className="text-white font-mono bg-gray-800 px-1 rounded">
+                    <span className="text-destructive">History:</span>{" "}
+                    <span className="text-foreground font-mono bg-muted px-1 rounded">
                       {conversationContext.conversationHistory.length} turns
                     </span>
                   </div>
@@ -768,7 +838,7 @@ export default function ChatInterface() {
                     onClick={() =>
                       setConversationContext({ conversationHistory: [] })
                     }
-                    className="text-xs text-yellow-400 hover:text-white mt-2 underline"
+                    className="text-xs text-destructive hover:text-foreground mt-2 underline"
                   >
                     Clear Context
                   </button>
@@ -779,31 +849,31 @@ export default function ChatInterface() {
         </div>
 
         {/* Chat Interface */}
-        <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-background overflow-hidden">
           {/* Header */}
-          <div className="border-b border-gray-700 bg-gray-900 p-4">
-            <div className="flex items-center gap-2 text-gray-100">
+          <div className="border-b bg-background p-4">
+            <div className="flex items-center gap-2">
               <Search className="w-5 h-5" />
               <h1 className="text-lg font-semibold">Vector Database Chat</h1>
-              <Badge
-                variant="outline"
-                className="ml-auto text-sm border-gray-600 text-gray-300"
-              >
-                {AVAILABLE_MODELS[selectedModel].name}
-              </Badge>
+              <div className="ml-auto flex items-center gap-2">
+                <Badge variant="outline" className="text-sm">
+                  {AVAILABLE_MODELS[selectedModel].name}
+                </Badge>
+                <ModeToggle />
+              </div>
             </div>
           </div>
 
           {/* Chat Messages Area */}
           <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
             {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
                   <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
                   <p className="text-sm">
                     Ask me anything about your vector database!
                   </p>
-                  <p className="text-xs mt-1 text-gray-500">
+                  <p className="text-xs mt-1">
                     Try the example queries on the left to get started.
                   </p>
                 </div>
@@ -827,8 +897,8 @@ export default function ChatInterface() {
                       <div
                         className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
                           message.type === "user"
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-700 text-gray-300"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {message.type === "user" ? (
@@ -840,30 +910,30 @@ export default function ChatInterface() {
                       <div
                         className={`rounded-lg p-2 text-sm ${
                           message.type === "user"
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-800 text-gray-100 border border-gray-700"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted border"
                         }`}
                       >
                         <div>
                           {message.type === "assistant" ? (
-                            <div className="prose prose-sm prose-invert max-w-none">
+                            <div className="prose prose-sm max-w-none">
                               <ReactMarkdown
                                 components={{
                                   p: ({ children }) => (
                                     <p className="mb-2 last:mb-0">{children}</p>
                                   ),
                                   strong: ({ children }) => (
-                                    <strong className="font-semibold text-white">
+                                    <strong className="font-semibold text-foreground">
                                       {children}
                                     </strong>
                                   ),
                                   em: ({ children }) => (
-                                    <em className="italic text-gray-300">
+                                    <em className="italic text-muted-foreground">
                                       {children}
                                     </em>
                                   ),
                                   code: ({ children }) => (
-                                    <code className="bg-gray-700 px-1 py-0.5 rounded text-xs font-mono text-gray-200">
+                                    <code className="bg-card px-1 py-0.5 rounded text-xs font-mono text-primary">
                                       {children}
                                     </code>
                                   ),
@@ -878,7 +948,7 @@ export default function ChatInterface() {
                                     </ol>
                                   ),
                                   li: ({ children }) => (
-                                    <li className="text-gray-200">
+                                    <li className="text-foreground">
                                       {children}
                                     </li>
                                   ),
@@ -906,7 +976,7 @@ export default function ChatInterface() {
                               {message.queryType && (
                                 <Badge
                                   variant="secondary"
-                                  className="ml-1 text-xs bg-gray-700 text-gray-300"
+                                  className="ml-1 text-xs"
                                 >
                                   {message.queryType}
                                 </Badge>
@@ -920,18 +990,18 @@ export default function ChatInterface() {
                 {isLoading && (
                   <div className="flex justify-start">
                     <div className="flex gap-2">
-                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 text-gray-300 flex items-center justify-center">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
                         <Bot className="w-3 h-3" />
                       </div>
-                      <div className="bg-gray-800 rounded-lg p-2 border border-gray-700">
+                      <div className="bg-muted rounded-lg p-2 border">
                         <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
                           <div
-                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
                             style={{ animationDelay: "0.1s" }}
                           ></div>
                           <div
-                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
                             style={{ animationDelay: "0.2s" }}
                           ></div>
                         </div>
@@ -945,19 +1015,19 @@ export default function ChatInterface() {
           </div>
 
           {/* Input area */}
-          <div className="border-t border-gray-700 bg-gray-900 p-4">
+          <div className="border-t bg-background p-4">
             <form onSubmit={handleSubmit} className="flex gap-3">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Ask about your vector database..."
                 disabled={isLoading}
-                className="flex-1 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 h-12"
+                className="flex-1 h-12"
               />
               <Button
                 type="submit"
                 disabled={isLoading || !inputValue.trim()}
-                className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-6"
+                className="h-12 px-6"
               >
                 <Send className="w-5 h-5" />
               </Button>
