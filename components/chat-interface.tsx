@@ -10,6 +10,8 @@ import {
   Search,
   Moon,
   Sun,
+  MessageCircle,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,8 @@ interface DynamicExamples {
   database: string[];
   collection: string[];
 }
+
+type PageType = "chat" | "settings";
 
 function ModeToggle() {
   const [theme, setThemeState] = useState<"light" | "dark" | "system">(
@@ -85,7 +89,142 @@ function ModeToggle() {
   );
 }
 
+function SideNavigation({
+  currentPage,
+  onPageChange,
+}: {
+  currentPage: PageType;
+  onPageChange: (page: PageType) => void;
+}) {
+  return (
+    <div className="w-16 flex-shrink-0 border-r bg-background flex flex-col items-center py-4 space-y-2">
+      <Button
+        variant={currentPage === "chat" ? "default" : "ghost"}
+        size="icon"
+        onClick={() => onPageChange("chat")}
+        className="w-12 h-12"
+      >
+        <MessageCircle className="w-5 h-5" />
+        <span className="sr-only">Chat</span>
+      </Button>
+
+      <Button
+        variant={currentPage === "settings" ? "default" : "ghost"}
+        size="icon"
+        onClick={() => onPageChange("settings")}
+        className="w-12 h-12"
+      >
+        <Settings className="w-5 h-5" />
+        <span className="sr-only">Settings</span>
+      </Button>
+    </div>
+  );
+}
+
+function SettingsPage() {
+  return (
+    <div className="flex-1 flex flex-col bg-background overflow-hidden">
+      {/* Header */}
+      <div className="border-b bg-background p-4">
+        <div className="flex items-center gap-2">
+          <Settings className="w-5 h-5" />
+          <h1 className="text-lg font-semibold">Settings</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <ModeToggle />
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-2xl space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Application Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Default AI Model
+                </label>
+                <Select defaultValue="gpt-4o-mini">
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select default model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>OpenAI Models</SelectLabel>
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "openai")
+                        .map(([key, info]) => (
+                          <SelectItem key={key} value={key}>
+                            {info.name}
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Gemini Models</SelectLabel>
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "gemini")
+                        .map(([key, info]) => (
+                          <SelectItem key={key} value={key}>
+                            {info.name}
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Theme</label>
+                <div className="flex items-center space-x-2">
+                  <ModeToggle />
+                  <span className="text-sm text-muted-foreground">
+                    Toggle between light, dark, and system theme
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Database Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Qdrant Connection
+                </label>
+                <div className="text-sm text-muted-foreground">
+                  Database connection settings are configured via environment
+                  variables.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>About</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p>Vector Database Chat Interface</p>
+                <p>Natural language interface for Qdrant vector databases</p>
+                <p>Built with Next.js, shadcn/ui, and Tailwind CSS</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatInterface() {
+  const [currentPage, setCurrentPage] = useState<PageType>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -124,8 +263,10 @@ export default function ChatInterface() {
 
   // Load collections on mount
   useEffect(() => {
-    loadCollectionsAndGenerateExamples();
-  }, []);
+    if (currentPage === "chat") {
+      loadCollectionsAndGenerateExamples();
+    }
+  }, [currentPage]);
 
   const loadCollectionsAndGenerateExamples = async () => {
     try {
@@ -575,488 +716,493 @@ export default function ChatInterface() {
     return null;
   };
 
-  return (
-    <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
-      <div className="flex h-full">
-        {/* Model Selection Panel */}
-        <div className="w-80 flex-shrink-0 border-r bg-background overflow-y-auto">
-          <div className="p-4 space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Bot className="w-4 h-4" />
-                  Query Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium mb-1 block text-muted-foreground">
-                    AI Model
-                  </label>
-                  <Select
-                    value={selectedModel}
-                    onValueChange={(value: ModelKey) => setSelectedModel(value)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>OpenAI Models</SelectLabel>
-                        {Object.entries(AVAILABLE_MODELS)
-                          .filter(([_, info]) => info.provider === "openai")
-                          .map(([key, info]) => (
-                            <SelectItem key={key} value={key}>
-                              {info.name}
-                            </SelectItem>
-                          ))}
-                      </SelectGroup>
-                      <SelectGroup>
-                        <SelectLabel>Gemini Models</SelectLabel>
-                        {Object.entries(AVAILABLE_MODELS)
-                          .filter(([_, info]) => info.provider === "gemini")
-                          .map(([key, info]) => (
-                            <SelectItem key={key} value={key}>
-                              {info.name}
-                            </SelectItem>
-                          ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+  const renderChatPage = () => (
+    <div className="flex h-full w-full">
+      {/* Model Selection Panel */}
+      <div className="w-80 flex-shrink-0 border-r bg-background overflow-y-auto">
+        <div className="p-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Bot className="w-4 h-4" />
+                Query Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">
+                  AI Model
+                </label>
+                <Select
+                  value={selectedModel}
+                  onValueChange={(value: ModelKey) => setSelectedModel(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>OpenAI Models</SelectLabel>
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "openai")
+                        .map(([key, info]) => (
+                          <SelectItem key={key} value={key}>
+                            {info.name}
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Gemini Models</SelectLabel>
+                      {Object.entries(AVAILABLE_MODELS)
+                        .filter(([_, info]) => info.provider === "gemini")
+                        .map(([key, info]) => (
+                          <SelectItem key={key} value={key}>
+                            {info.name}
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div>
-                  <label className="text-xs font-medium mb-1 block text-muted-foreground">
-                    Collection (Optional)
-                  </label>
-                  <Select
-                    value={selectedCollection || "database-level"}
-                    onValueChange={(value: string) =>
-                      setSelectedCollection(
-                        value === "database-level" ? "" : value
-                      )
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Database-level query" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="database-level">
-                        Database-level query
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">
+                  Collection (Optional)
+                </label>
+                <Select
+                  value={selectedCollection || "database-level"}
+                  onValueChange={(value: string) =>
+                    setSelectedCollection(
+                      value === "database-level" ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Database-level query" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="database-level">
+                      Database-level query
+                    </SelectItem>
+                    {collections.map((collection) => (
+                      <SelectItem key={collection} value={collection}>
+                        {collection}
                       </SelectItem>
-                      {collections.map((collection) => (
-                        <SelectItem key={collection} value={collection}>
-                          {collection}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Conversation Context Indicator */}
-                {(conversationContext.lastEntity ||
-                  conversationContext.lastCollection ||
-                  conversationContext.conversationHistory.length > 0) && (
-                  <div className="border-t pt-3">
-                    <label className="text-xs font-medium mb-2 block text-muted-foreground">
-                      Conversation Context
-                    </label>
-                    <div className="space-y-1">
-                      {conversationContext.lastEntity && (
-                        <div className="text-xs bg-accent rounded px-2 py-1 border">
-                          <span className="text-accent-foreground">
-                            Entity:
-                          </span>{" "}
-                          <span className="text-foreground">
-                            {conversationContext.lastEntity}
-                          </span>
-                        </div>
-                      )}
-                      {conversationContext.lastCollection && (
-                        <div className="text-xs bg-accent rounded px-2 py-1 border">
-                          <span className="text-accent-foreground">
-                            Collection:
-                          </span>{" "}
-                          <span className="text-foreground">
-                            {conversationContext.lastCollection}
-                          </span>
-                        </div>
-                      )}
-                      {conversationContext.conversationHistory.length > 0 && (
-                        <div className="text-xs bg-muted rounded px-2 py-1 border">
-                          <span className="text-muted-foreground">
-                            History:
-                          </span>{" "}
-                          <span className="text-foreground">
-                            {conversationContext.conversationHistory.length}{" "}
-                            turns
-                          </span>
-                        </div>
-                      )}
-                      {conversationContext.currentTopic && (
-                        <div className="text-xs bg-accent rounded px-2 py-1 border">
-                          <span className="text-accent-foreground">Topic:</span>{" "}
-                          <span className="text-foreground">
-                            {conversationContext.currentTopic}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() =>
-                        setConversationContext({ conversationHistory: [] })
-                      }
-                      className="text-xs text-muted-foreground hover:text-foreground mt-2 underline"
-                    >
-                      Clear Context
-                    </button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Database className="w-4 h-4" />
-                  Example Queries
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <div className="text-xs font-medium mb-1 text-muted-foreground">
-                    Database-level:
-                  </div>
-                  <div className="space-y-1">
-                    {demoExamples.database.map((example, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleExampleClick(example)}
-                        className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                      >
-                        {example}
-                      </button>
                     ))}
-                  </div>
-                </div>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div>
-                  <div className="text-xs font-medium mb-1 text-muted-foreground">
-                    Collection-specific:
-                  </div>
+              {/* Conversation Context Indicator */}
+              {(conversationContext.lastEntity ||
+                conversationContext.lastCollection ||
+                conversationContext.conversationHistory.length > 0) && (
+                <div className="border-t pt-3">
+                  <label className="text-xs font-medium mb-2 block text-muted-foreground">
+                    Conversation Context
+                  </label>
                   <div className="space-y-1">
-                    {demoExamples.collection.map((example, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleExampleClick(example)}
-                        className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Conversation Examples */}
-                <div>
-                  <div className="text-xs font-medium mb-1 text-muted-foreground">
-                    Conversational:
-                  </div>
-                  <div className="space-y-1">
-                    <button
-                      onClick={() =>
-                        handleExampleClick("Show me Chris Dyer's work")
-                      }
-                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                    >
-                      Show me Chris Dyer's work
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleExampleClick("How many items do they have?")
-                      }
-                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                    >
-                      How many items do they have?
-                      <span className="text-muted-foreground ml-1">
-                        (after asking about an artist)
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => handleExampleClick("What about Alice?")}
-                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                    >
-                      What about Alice?
-                      <span className="text-muted-foreground ml-1">
-                        (continuing conversation)
-                      </span>
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleExampleClick("Also show me their latest work")
-                      }
-                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
-                    >
-                      Also show me their latest work
-                      <span className="text-muted-foreground ml-1">
-                        (using pronoun reference)
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Debug Panel */}
-            {(conversationContext.lastEntity ||
-              conversationContext.lastCollection ||
-              conversationContext.conversationHistory.length > 0) && (
-              <Card className="border-destructive">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-destructive text-sm">
-                    🧠 Debug: Conversation Context
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {conversationContext.lastEntity && (
-                    <div className="text-xs">
-                      <span className="text-destructive">Last Entity:</span>{" "}
-                      <span className="text-foreground font-mono bg-muted px-1 rounded">
-                        {conversationContext.lastEntity}
-                      </span>
-                    </div>
-                  )}
-                  {conversationContext.lastCollection && (
-                    <div className="text-xs">
-                      <span className="text-destructive">Last Collection:</span>{" "}
-                      <span className="text-foreground font-mono bg-muted px-1 rounded">
-                        {conversationContext.lastCollection}
-                      </span>
-                    </div>
-                  )}
-                  {conversationContext.lastQueryType && (
-                    <div className="text-xs">
-                      <span className="text-destructive">Last Query:</span>{" "}
-                      <span className="text-foreground font-mono bg-muted px-1 rounded">
-                        {conversationContext.lastQueryType}{" "}
-                        {conversationContext.lastTarget}
-                      </span>
-                    </div>
-                  )}
-                  {conversationContext.currentTopic && (
-                    <div className="text-xs">
-                      <span className="text-destructive">Current Topic:</span>{" "}
-                      <span className="text-foreground font-mono bg-muted px-1 rounded">
-                        {conversationContext.currentTopic}
-                      </span>
-                    </div>
-                  )}
-                  <div className="text-xs">
-                    <span className="text-destructive">History:</span>{" "}
-                    <span className="text-foreground font-mono bg-muted px-1 rounded">
-                      {conversationContext.conversationHistory.length} turns
-                    </span>
+                    {conversationContext.lastEntity && (
+                      <div className="text-xs bg-accent rounded px-2 py-1 border">
+                        <span className="text-accent-foreground">Entity:</span>{" "}
+                        <span className="text-foreground">
+                          {conversationContext.lastEntity}
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.lastCollection && (
+                      <div className="text-xs bg-accent rounded px-2 py-1 border">
+                        <span className="text-accent-foreground">
+                          Collection:
+                        </span>{" "}
+                        <span className="text-foreground">
+                          {conversationContext.lastCollection}
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.conversationHistory.length > 0 && (
+                      <div className="text-xs bg-muted rounded px-2 py-1 border">
+                        <span className="text-muted-foreground">History:</span>{" "}
+                        <span className="text-foreground">
+                          {conversationContext.conversationHistory.length} turns
+                        </span>
+                      </div>
+                    )}
+                    {conversationContext.currentTopic && (
+                      <div className="text-xs bg-accent rounded px-2 py-1 border">
+                        <span className="text-accent-foreground">Topic:</span>{" "}
+                        <span className="text-foreground">
+                          {conversationContext.currentTopic}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() =>
                       setConversationContext({ conversationHistory: [] })
                     }
-                    className="text-xs text-destructive hover:text-foreground mt-2 underline"
+                    className="text-xs text-muted-foreground hover:text-foreground mt-2 underline"
                   >
                     Clear Context
                   </button>
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Database className="w-4 h-4" />
+                Example Queries
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <div className="text-xs font-medium mb-1 text-muted-foreground">
+                  Database-level:
+                </div>
+                <div className="space-y-1">
+                  {demoExamples.database.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExampleClick(example)}
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium mb-1 text-muted-foreground">
+                  Collection-specific:
+                </div>
+                <div className="space-y-1">
+                  {demoExamples.collection.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExampleClick(example)}
+                      className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Conversation Examples */}
+              <div>
+                <div className="text-xs font-medium mb-1 text-muted-foreground">
+                  Conversational:
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() =>
+                      handleExampleClick("Show me Chris Dyer's work")
+                    }
+                    className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                  >
+                    Show me Chris Dyer's work
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleExampleClick("How many items do they have?")
+                    }
+                    className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                  >
+                    How many items do they have?
+                    <span className="text-muted-foreground ml-1">
+                      (after asking about an artist)
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleExampleClick("What about Alice?")}
+                    className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                  >
+                    What about Alice?
+                    <span className="text-muted-foreground ml-1">
+                      (continuing conversation)
+                    </span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleExampleClick("Also show me their latest work")
+                    }
+                    className="text-xs text-left w-full p-2 bg-accent hover:bg-accent/80 rounded border transition-colors"
+                  >
+                    Also show me their latest work
+                    <span className="text-muted-foreground ml-1">
+                      (using pronoun reference)
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Debug Panel */}
+          {(conversationContext.lastEntity ||
+            conversationContext.lastCollection ||
+            conversationContext.conversationHistory.length > 0) && (
+            <Card className="border-destructive">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-destructive text-sm">
+                  🧠 Debug: Conversation Context
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {conversationContext.lastEntity && (
+                  <div className="text-xs">
+                    <span className="text-destructive">Last Entity:</span>{" "}
+                    <span className="text-foreground font-mono bg-muted px-1 rounded">
+                      {conversationContext.lastEntity}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.lastCollection && (
+                  <div className="text-xs">
+                    <span className="text-destructive">Last Collection:</span>{" "}
+                    <span className="text-foreground font-mono bg-muted px-1 rounded">
+                      {conversationContext.lastCollection}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.lastQueryType && (
+                  <div className="text-xs">
+                    <span className="text-destructive">Last Query:</span>{" "}
+                    <span className="text-foreground font-mono bg-muted px-1 rounded">
+                      {conversationContext.lastQueryType}{" "}
+                      {conversationContext.lastTarget}
+                    </span>
+                  </div>
+                )}
+                {conversationContext.currentTopic && (
+                  <div className="text-xs">
+                    <span className="text-destructive">Current Topic:</span>{" "}
+                    <span className="text-foreground font-mono bg-muted px-1 rounded">
+                      {conversationContext.currentTopic}
+                    </span>
+                  </div>
+                )}
+                <div className="text-xs">
+                  <span className="text-destructive">History:</span>{" "}
+                  <span className="text-foreground font-mono bg-muted px-1 rounded">
+                    {conversationContext.conversationHistory.length} turns
+                  </span>
+                </div>
+                <button
+                  onClick={() =>
+                    setConversationContext({ conversationHistory: [] })
+                  }
+                  className="text-xs text-destructive hover:text-foreground mt-2 underline"
+                >
+                  Clear Context
+                </button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Chat Interface */}
+      <div className="flex-1 flex flex-col bg-background overflow-hidden ">
+        {/* Header */}
+        <div className="border-b bg-background p-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">Vector Database Chat</h1>
+            <div className="ml-auto flex items-center gap-2">
+              <Badge variant="outline" className="text-sm h-9">
+                {AVAILABLE_MODELS[selectedModel].name}
+              </Badge>
+              <ModeToggle />
+            </div>
           </div>
         </div>
 
-        {/* Chat Interface */}
-        <div className="flex-1 flex flex-col bg-background overflow-hidden">
-          {/* Header */}
-          <div className="border-b bg-background p-4">
-            <div className="flex items-center gap-2">
-              {/* <Search className="w-5 h-5" /> */}
-              <h1 className="text-lg font-semibold">Vector Database Chat</h1>
-              <div className="ml-auto flex items-center gap-2">
-                <Badge variant="outline" className="text-sm h-9">
-                  {AVAILABLE_MODELS[selectedModel].name}
-                </Badge>
-                <ModeToggle />
+        {/* Chat Messages Area */}
+        <div ref={scrollAreaRef} className="flex-1 overflow-y-auto py-4">
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="text-center">
+                <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p className="text-sm">
+                  Ask me anything about your vector database!
+                </p>
+                <p className="text-xs mt-1">
+                  Try the example queries on the left to get started.
+                </p>
               </div>
             </div>
-          </div>
-
-          {/* Chat Messages Area */}
-          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
-            {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <div className="text-center">
-                  <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                  <p className="text-sm">
-                    Ask me anything about your vector database!
-                  </p>
-                  <p className="text-xs mt-1">
-                    Try the example queries on the left to get started.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {messages.map((message) => (
+          ) : (
+            <div className="space-y-3 px-6">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex gap-2 ${
+                    message.type === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
                   <div
-                    key={message.id}
-                    className={`flex gap-2 ${
-                      message.type === "user" ? "justify-end" : "justify-start"
+                    className={`flex gap-2 max-w-[85%] ${
+                      message.type === "user" ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
                     <div
-                      className={`flex gap-2 max-w-[85%] ${
+                      className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
                         message.type === "user"
-                          ? "flex-row-reverse"
-                          : "flex-row"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
                       }`}
                     >
-                      <div
-                        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                          message.type === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {message.type === "user" ? (
-                          <User className="w-3 h-3" />
+                      {message.type === "user" ? (
+                        <User className="w-3 h-3" />
+                      ) : (
+                        <Bot className="w-3 h-3" />
+                      )}
+                    </div>
+                    <div
+                      className={`rounded-lg p-2 text-sm ${
+                        message.type === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted border"
+                      }`}
+                    >
+                      <div>
+                        {message.type === "assistant" ? (
+                          <div className="prose prose-sm max-w-none">
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => (
+                                  <p className="mb-2 last:mb-0">{children}</p>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="font-semibold text-foreground">
+                                    {children}
+                                  </strong>
+                                ),
+                                em: ({ children }) => (
+                                  <em className="italic text-muted-foreground">
+                                    {children}
+                                  </em>
+                                ),
+                                code: ({ children }) => (
+                                  <code className="bg-card px-1 py-0.5 rounded text-xs font-mono text-primary">
+                                    {children}
+                                  </code>
+                                ),
+                                ul: ({ children }) => (
+                                  <ul className="list-disc list-inside mb-2 space-y-1">
+                                    {children}
+                                  </ul>
+                                ),
+                                ol: ({ children }) => (
+                                  <ol className="list-decimal list-inside mb-2 space-y-1">
+                                    {children}
+                                  </ol>
+                                ),
+                                li: ({ children }) => (
+                                  <li className="text-foreground">
+                                    {children}
+                                  </li>
+                                ),
+                              }}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
                         ) : (
-                          <Bot className="w-3 h-3" />
+                          message.content
                         )}
                       </div>
-                      <div
-                        className={`rounded-lg p-2 text-sm ${
-                          message.type === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted border"
-                        }`}
-                      >
-                        <div>
-                          {message.type === "assistant" ? (
-                            <div className="prose prose-sm max-w-none">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => (
-                                    <p className="mb-2 last:mb-0">{children}</p>
-                                  ),
-                                  strong: ({ children }) => (
-                                    <strong className="font-semibold text-foreground">
-                                      {children}
-                                    </strong>
-                                  ),
-                                  em: ({ children }) => (
-                                    <em className="italic text-muted-foreground">
-                                      {children}
-                                    </em>
-                                  ),
-                                  code: ({ children }) => (
-                                    <code className="bg-card px-1 py-0.5 rounded text-xs font-mono text-primary">
-                                      {children}
-                                    </code>
-                                  ),
-                                  ul: ({ children }) => (
-                                    <ul className="list-disc list-inside mb-2 space-y-1">
-                                      {children}
-                                    </ul>
-                                  ),
-                                  ol: ({ children }) => (
-                                    <ol className="list-decimal list-inside mb-2 space-y-1">
-                                      {children}
-                                    </ol>
-                                  ),
-                                  li: ({ children }) => (
-                                    <li className="text-foreground">
-                                      {children}
-                                    </li>
-                                  ),
-                                }}
-                              >
-                                {message.content}
-                              </ReactMarkdown>
-                            </div>
-                          ) : (
-                            message.content
-                          )}
-                        </div>
 
-                        {message.type === "assistant" && message.data && (
-                          <div>
-                            {formatData(message.data, message.queryType || "")}
+                      {message.type === "assistant" && message.data && (
+                        <div>
+                          {formatData(message.data, message.queryType || "")}
+                        </div>
+                      )}
+
+                      {message.type === "assistant" &&
+                        message.executionTime && (
+                          <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
+                            <Clock className="w-3 h-3" />
+                            <span>{message.executionTime}ms</span>
+                            {message.queryType && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-1 text-xs"
+                              >
+                                {message.queryType}
+                              </Badge>
+                            )}
                           </div>
                         )}
-
-                        {message.type === "assistant" &&
-                          message.executionTime && (
-                            <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
-                              <Clock className="w-3 h-3" />
-                              <span>{message.executionTime}ms</span>
-                              {message.queryType && (
-                                <Badge
-                                  variant="secondary"
-                                  className="ml-1 text-xs"
-                                >
-                                  {message.queryType}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="flex gap-2">
+                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
+                      <Bot className="w-3 h-3" />
+                    </div>
+                    <div className="bg-muted rounded-lg p-2 border">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
                       </div>
                     </div>
                   </div>
-                ))}
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="flex gap-2">
-                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
-                        <Bot className="w-3 h-3" />
-                      </div>
-                      <div className="bg-muted rounded-lg p-2 border">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
-                          <div
-                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
-                            style={{ animationDelay: "0.1s" }}
-                          ></div>
-                          <div
-                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
-                            style={{ animationDelay: "0.2s" }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
-
-          {/* Input area */}
-          <div className="border-t bg-background p-4">
-            <form onSubmit={handleSubmit} className="flex gap-3">
-              <Input
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask about your vector database..."
-                disabled={isLoading}
-                className="flex-1 h-12"
-              />
-              <Button
-                type="submit"
-                disabled={isLoading || !inputValue.trim()}
-                className="h-12 px-6"
-              >
-                <Send className="w-5 h-5" />
-              </Button>
-            </form>
-          </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
+
+        {/* Input area */}
+        <div className="border-t bg-background p-4">
+          <form onSubmit={handleSubmit} className="flex gap-3">
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Ask about your vector database..."
+              disabled={isLoading}
+              className="flex-1 h-12"
+            />
+            <Button
+              type="submit"
+              disabled={isLoading || !inputValue.trim()}
+              className="h-12 px-6"
+            >
+              <Send className="w-5 h-5" />
+            </Button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
+      <div className="flex h-full">
+        {/* Side Navigation */}
+        <SideNavigation
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+        />
+
+        {/* Main Content */}
+        {currentPage === "chat" ? renderChatPage() : <SettingsPage />}
       </div>
     </div>
   );
