@@ -173,8 +173,7 @@ export function SettingsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  This setting will apply across the entire application and is
-                  saved to localStorage.
+                  This setting will apply across the entire application.
                 </p>
               </div>
 
@@ -290,34 +289,41 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <div>
                     <div className="font-medium text-sm">Qdrant Connection</div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span>URL: {databaseInfo.url}</span>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span className="flex-1 truncate">
+                        {databaseInfo.url && databaseInfo.url.length > 50
+                          ? `${databaseInfo.url.substring(
+                              0,
+                              25
+                            )}...${databaseInfo.url.substring(
+                              databaseInfo.url.length - 25
+                            )}`
+                          : databaseInfo.url}
+                      </span>
                       {databaseInfo.url && (
-                        <>
-                          <a
-                            href={(() => {
-                              const url = databaseInfo.url!;
-                              const protocol =
-                                url.includes("localhost") ||
-                                url.includes("127.0.0.1")
-                                  ? "http"
-                                  : "https";
-                              const baseUrl = url.startsWith("http")
-                                ? url
-                                : `${protocol}://${url}`;
-                              return (
-                                baseUrl.replace(":6333", "") +
-                                "/dashboard#/collections"
-                              );
-                            })()}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-6 w-6 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
-                            onClick={() => console.log("Link clicked!")}
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </>
+                        <a
+                          href={(() => {
+                            const url = databaseInfo.url!;
+                            const protocol =
+                              url.includes("localhost") ||
+                              url.includes("127.0.0.1")
+                                ? "http"
+                                : "https";
+                            const baseUrl = url.startsWith("http")
+                              ? url
+                              : `${protocol}://${url}`;
+                            return (
+                              baseUrl.replace(":6333", "") +
+                              "/dashboard#/collections"
+                            );
+                          })()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-5 w-5 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer flex-shrink-0"
+                          title="Open Qdrant Dashboard"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
                       )}
                     </div>
                   </div>
@@ -362,7 +368,7 @@ export function SettingsPage() {
               </div>
 
               {databaseInfo.error && (
-                <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                <div className="text-xs text-destructive  bg-background p-3 rounded-lg border border-destructive">
                   <strong>Connection Error:</strong> {databaseInfo.error}
                 </div>
               )}
