@@ -198,7 +198,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
                     <StatusIcon status={apiKeyStatus.openai} />
                     <div>
@@ -231,7 +231,7 @@ export function SettingsPage() {
                   </Badge>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
                     <StatusIcon status={apiKeyStatus.gemini} />
                     <div>
@@ -286,7 +286,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div>
                     <div className="font-medium text-sm">Qdrant Connection</div>
                     <div className="text-xs text-muted-foreground flex items-center gap-2">
@@ -350,7 +350,7 @@ export function SettingsPage() {
                   </Badge>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div>
                     <div className="font-medium text-sm">Database API Key</div>
                     <div className="text-xs text-muted-foreground">
