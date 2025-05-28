@@ -25,6 +25,12 @@ import {
   ModelKey,
   ConversationContext,
 } from "@/lib/types";
+import { useAtom } from "jotai";
+import {
+  selectedModelAtom,
+  selectedCollectionAtom,
+  conversationContextAtom,
+} from "@/lib/atoms";
 
 interface DynamicExamples {
   database: string[];
@@ -36,13 +42,14 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCollection, setSelectedCollection] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<ModelKey>("gpt-4o-mini");
+  const [selectedCollection, setSelectedCollection] = useAtom(
+    selectedCollectionAtom
+  );
+  const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
   const [collections, setCollections] = useState<string[]>([]);
-  const [conversationContext, setConversationContext] =
-    useState<ConversationContext>({
-      conversationHistory: [],
-    });
+  const [conversationContext, setConversationContext] = useAtom(
+    conversationContextAtom
+  );
   const [demoExamples, setDemoExamples] = useState<DynamicExamples>({
     database: [
       "What collections exist in my database?",
@@ -543,7 +550,7 @@ export default function ChatInterface() {
                 </label>
                 <Select
                   value={selectedModel}
-                  onValueChange={(value: ModelKey) => setSelectedModel(value)}
+                  onValueChange={(value) => setSelectedModel(value as any)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a model" />

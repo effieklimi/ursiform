@@ -13,8 +13,12 @@ import {
 } from "@/components/ui/select";
 import { ModeToggle } from "@/components/mode-toggle";
 import { AVAILABLE_MODELS } from "@/lib/types";
+import { useAtom } from "jotai";
+import { selectedModelAtom } from "@/lib/atoms";
 
 export function SettingsPage() {
+  const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
+
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
       {/* Header */}
@@ -28,9 +32,9 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Settings Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="max-w-2xl space-y-6">
+      {/* Settings Content - Centered */}
+      <div className="flex-1 overflow-y-auto flex items-center justify-center p-6">
+        <div className="w-full max-w-2xl space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Application Settings</CardTitle>
@@ -40,7 +44,10 @@ export function SettingsPage() {
                 <label className="text-sm font-medium mb-2 block">
                   Default AI Model
                 </label>
-                <Select defaultValue="gpt-4o-mini">
+                <Select
+                  value={selectedModel}
+                  onValueChange={(value) => setSelectedModel(value as any)}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select default model" />
                   </SelectTrigger>
@@ -67,6 +74,10 @@ export function SettingsPage() {
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This setting will apply across the entire application and is
+                  saved to localStorage.
+                </p>
               </div>
 
               <div>
@@ -106,7 +117,7 @@ export function SettingsPage() {
               <div className="text-sm text-muted-foreground space-y-2">
                 <p>Vector Database Chat Interface</p>
                 <p>Natural language interface for Qdrant vector databases</p>
-                <p>Built with Next.js, shadcn/ui, and Tailwind CSS</p>
+                <p>Built with Next.js, shadcn/ui, Tailwind CSS, and Jotai</p>
               </div>
             </CardContent>
           </Card>
