@@ -97,14 +97,14 @@ function SideNavigation({
   onPageChange: (page: PageType) => void;
 }) {
   return (
-    <div className="w-16 flex-shrink-0 border-r bg-background flex flex-col items-center py-4 space-y-2">
+    <div className="w-14 flex-shrink-0 border-r bg-background flex flex-col items-center py-4 space-y-3">
       <Button
         variant={currentPage === "chat" ? "default" : "ghost"}
         size="icon"
         onClick={() => onPageChange("chat")}
-        className="w-12 h-12"
+        className="w-10 h-10"
       >
-        <MessageCircle className="w-5 h-5" />
+        <MessageCircle className="w-6 h-6" />
         <span className="sr-only">Chat</span>
       </Button>
 
@@ -112,9 +112,9 @@ function SideNavigation({
         variant={currentPage === "settings" ? "default" : "ghost"}
         size="icon"
         onClick={() => onPageChange("settings")}
-        className="w-12 h-12"
+        className="w-10 h-10"
       >
-        <Settings className="w-5 h-5" />
+        <Settings className="w-6 h-6" />
         <span className="sr-only">Settings</span>
       </Button>
     </div>
