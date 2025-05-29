@@ -269,10 +269,9 @@ export function SettingsPage() {
               </div>
 
               {(!apiKeyStatus.openai || !apiKeyStatus.gemini) && (
-                <div className="text-xs text-muted-foreground bg-yellow-50 dark:bg-yellow-950 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                  <strong>Note:</strong> Missing API keys will prevent certain
-                  models from working. Configure them in your environment
-                  variables (.env file).
+                <div className="text-xs text-warning bg-transparent  p-3 rounded-lg border border-warning">
+                  Searching for and testing API keys. Configure them in your
+                  environment variables (.env file).
                 </div>
               )}
             </CardContent>
@@ -409,7 +408,7 @@ export function SettingsPage() {
                 </div>
                 <div className="border-t pt-4">
                   <div className="text-sm font-normal mb-2">
-                    Built with ❤️ in the UK by{" "}
+                    Built by{" "}
                     <span className="hover:underline font-medium">
                       <a href="https://effie.bio" target="_blank">
                         effie.bio
