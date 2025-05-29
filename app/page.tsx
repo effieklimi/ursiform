@@ -1,4 +1,4 @@
-import ChatInterface from "../components/chat-interface";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Yearn - Natural Language Query Interface",
@@ -8,9 +8,5 @@ export const metadata = {
 };
 
 export default function Home() {
-  return (
-    <main className="h-screen w-screen bg-gray-900 overflow-hidden">
-      <ChatInterface />
-    </main>
-  );
+  redirect("/chat");
 }
