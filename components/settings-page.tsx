@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { ModeToggle } from "@/components/mode-toggle";
 import { AVAILABLE_MODELS } from "@/lib/types";
 import { useAtom } from "jotai";
@@ -113,7 +114,7 @@ export function SettingsPage() {
     return status ? (
       <CheckCircle className="w-4 h-4 text-green-500" />
     ) : (
-      <XCircle className="w-4 h-4 text-red-500" />
+      <XCircle className="w-4 h-4 text-destructive" />
     );
   };
 
@@ -388,50 +389,32 @@ export function SettingsPage() {
             <CardContent>
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground space-y-2">
-                  <p>Vector Database Chat Interface</p>
                   <p>Natural language interface for Qdrant vector databases</p>
-                  <p>Built with Next.js, shadcn/ui, Tailwind CSS, and Jotai</p>
                 </div>
-
+                <div className="flex gap-3 text-xs">
+                  <Link
+                    href="https://github.com/effieklimi/yearn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    GitHub
+                  </Link>
+                  <Link
+                    href="mailto:effie@effie.bio"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Contact
+                  </Link>
+                </div>
                 <div className="border-t pt-4">
-                  <div className="text-sm font-medium mb-2">Built by</div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-medium">
-                        E
-                      </div>
-                      <div>
-                        <div className="font-medium text-sm">Effie Klimi</div>
-                        <div className="text-xs text-muted-foreground">
-                          Developer
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          window.open("https://effie.bio", "_blank")
-                        }
-                        className="flex items-center gap-1"
-                      >
-                        <Globe className="w-3 h-3" />
-                        Website
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          window.open("https://github.com/effie-bio", "_blank")
-                        }
-                        className="flex items-center gap-1"
-                      >
-                        <Github className="w-3 h-3" />
-                        GitHub
-                      </Button>
-                    </div>
+                  <div className="text-sm font-normal mb-2">
+                    Built with ❤️ in the UK by{" "}
+                    <span className="hover:underline font-medium">
+                      <a href="https://effie.bio" target="_blank">
+                        effie.bio
+                      </a>
+                    </span>
                   </div>
                 </div>
               </div>
