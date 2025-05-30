@@ -110,7 +110,16 @@ export function SettingsPage() {
     }
   };
 
-  const StatusIcon = ({ status }: { status: boolean }) => {
+  const StatusIcon = ({
+    status,
+    isLoading,
+  }: {
+    status: boolean;
+    isLoading?: boolean;
+  }) => {
+    if (isLoading) {
+      return <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />;
+    }
     return status ? (
       <CheckCircle className="w-4 h-4 text-green-500" />
     ) : (
@@ -194,14 +203,19 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 API Keys Status
-                {isLoading && <AlertCircle className="w-4 h-4 animate-spin" />}
+                {/* {isLoading && (
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                )} */}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    <StatusIcon status={apiKeyStatus.openai} />
+                    <StatusIcon
+                      status={apiKeyStatus.openai}
+                      isLoading={isLoading}
+                    />
                     <div>
                       <div className="font-medium text-sm">OpenAI API Key</div>
                       <div className="text-xs text-muted-foreground">
@@ -234,7 +248,10 @@ export function SettingsPage() {
 
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    <StatusIcon status={apiKeyStatus.gemini} />
+                    <StatusIcon
+                      status={apiKeyStatus.gemini}
+                      isLoading={isLoading}
+                    />
                     <div>
                       <div className="font-medium text-sm">
                         Google Gemini API Key
@@ -281,7 +298,10 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Database Configuration
-                <StatusIcon status={databaseInfo.connected} />
+                {/* <StatusIcon
+                  status={databaseInfo.connected}
+                  isLoading={isLoading}
+                /> */}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">

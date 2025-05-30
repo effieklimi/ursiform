@@ -547,42 +547,6 @@ export default function ChatPage() {
                 <CardContent className="space-y-3">
                   <div>
                     <label className="text-xs font-medium mb-1 block text-muted-foreground">
-                      AI Model
-                    </label>
-                    <Select
-                      value={selectedModel}
-                      onValueChange={(value) => setSelectedModel(value as any)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectLabel>OpenAI Models</SelectLabel>
-                          {Object.entries(AVAILABLE_MODELS)
-                            .filter(([_, info]) => info.provider === "openai")
-                            .map(([key, info]) => (
-                              <SelectItem key={key} value={key}>
-                                {info.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Gemini Models</SelectLabel>
-                          {Object.entries(AVAILABLE_MODELS)
-                            .filter(([_, info]) => info.provider === "gemini")
-                            .map(([key, info]) => (
-                              <SelectItem key={key} value={key}>
-                                {info.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium mb-1 block text-muted-foreground">
                       Collection (Optional)
                     </label>
                     <Select
