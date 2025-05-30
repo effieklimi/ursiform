@@ -1,4 +1,5 @@
 import ChatPage from "@/components/chat-page";
+import { TestTRPC } from "@/components/test-trpc";
 
 export const metadata = {
   title: "Chat - Yearn",
@@ -6,5 +7,12 @@ export const metadata = {
 };
 
 export default function Chat() {
-  return <ChatPage />;
+  return (
+    <div>
+      <div className="mb-6">
+        <TestTRPC />
+      </div>
+      <ChatPage />
+    </div>
+  );
 }
