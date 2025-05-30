@@ -9,6 +9,7 @@ import {
   Github,
   Globe,
   Loader2,
+  Circle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -29,9 +30,17 @@ import { useAtom } from "jotai";
 import { selectedModelAtom } from "@/lib/atoms";
 import { useEffect, useState } from "react";
 
-interface APIKeyStatus {
-  openai: boolean;
-  gemini: boolean;
+type APIKeyStatus = "missing" | "testing" | "working" | "failed";
+
+interface APIKeyStatusInfo {
+  openai: {
+    status: APIKeyStatus;
+    error?: string;
+  };
+  gemini: {
+    status: APIKeyStatus;
+    error?: string;
+  };
 }
 
 interface DatabaseInfo {
@@ -43,45 +52,63 @@ interface DatabaseInfo {
 
 export function SettingsPage() {
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
-  const [apiKeyStatus, setApiKeyStatus] = useState<APIKeyStatus>({
-    openai: false,
-    gemini: false,
+  const [apiKeyStatus, setApiKeyStatus] = useState<APIKeyStatusInfo>({
+    openai: { status: "testing" },
+    gemini: { status: "testing" },
   });
   const [databaseInfo, setDatabaseInfo] = useState<DatabaseInfo>({
     connected: false,
     hasApiKey: false,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>("Checking...");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     checkAPIKeysAndDatabase();
   }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      setLastUpdated(new Date().toLocaleTimeString());
+    }
+  }, [apiKeyStatus, mounted]);
 
   const checkAPIKeysAndDatabase = async () => {
     try {
       // Check API health endpoint which should return API key status
       const response = await fetch("/api/health");
+
       if (response.ok) {
         const data = await response.json();
 
-        // Use only server-side data from health endpoint
-        setApiKeyStatus({
-          openai: data.openai_available || false,
-          gemini: data.gemini_available || false,
-        });
+        // Use the new detailed status format
+        const newApiKeyStatus = {
+          openai: {
+            status: data.openai_status || "missing",
+            error: data.openai_error,
+          },
+          gemini: {
+            status: data.gemini_status || "missing",
+            error: data.gemini_error,
+          },
+        };
+        setApiKeyStatus(newApiKeyStatus);
 
         // Extract database info from server response
-        setDatabaseInfo({
+        const newDatabaseInfo = {
           connected: data.database_connected || false,
           url: data.database_url || "localhost:6333",
           hasApiKey: data.database_api_key || false,
           error: data.database_error,
-        });
+        };
+        setDatabaseInfo(newDatabaseInfo);
       } else {
         // If health endpoint fails, show unknown status
         setApiKeyStatus({
-          openai: false,
-          gemini: false,
+          openai: { status: "failed", error: "Health check endpoint failed" },
+          gemini: { status: "failed", error: "Health check endpoint failed" },
         });
 
         setDatabaseInfo({
@@ -92,11 +119,16 @@ export function SettingsPage() {
         });
       }
     } catch (error) {
-      console.error("Failed to check API status:", error);
-      // Set unknown status on error
+      // Set error status on network failure
       setApiKeyStatus({
-        openai: false,
-        gemini: false,
+        openai: {
+          status: "failed",
+          error: "Network error during health check",
+        },
+        gemini: {
+          status: "failed",
+          error: "Network error during health check",
+        },
       });
 
       setDatabaseInfo({
@@ -110,22 +142,87 @@ export function SettingsPage() {
     }
   };
 
-  const StatusIcon = ({
-    status,
-    isLoading,
-  }: {
-    status: boolean;
-    isLoading?: boolean;
-  }) => {
-    if (isLoading) {
-      return <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />;
+  const getStatusIcon = (status: APIKeyStatus) => {
+    switch (status) {
+      case "working":
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case "failed":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      case "testing":
+        return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+      case "missing":
+      default:
+        return <Circle className="w-4 h-4 text-muted-foreground" />;
     }
-    return status ? (
-      <CheckCircle className="w-4 h-4 text-green-500" />
-    ) : (
-      <XCircle className="w-4 h-4 text-destructive" />
-    );
   };
+
+  const getStatusBadge = (status: APIKeyStatus) => {
+    switch (status) {
+      case "working":
+        return (
+          <Badge variant="default" className="bg-green-500 hover:bg-green-600">
+            Working
+          </Badge>
+        );
+      case "failed":
+        return <Badge variant="destructive">Failed</Badge>;
+      case "testing":
+        return (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Testing...
+          </Badge>
+        );
+      case "missing":
+      default:
+        return (
+          <Badge variant="outline" className="text-muted-foreground">
+            Not Configured
+          </Badge>
+        );
+    }
+  };
+
+  const getStatusDescription = (status: APIKeyStatus, error?: string) => {
+    switch (status) {
+      case "working":
+        return "API key is configured and working correctly";
+      case "failed":
+        return error
+          ? `API key failed: ${error}`
+          : "API key exists but is not working";
+      case "testing":
+        return "Testing API key...";
+      case "missing":
+      default:
+        return "API key not configured";
+    }
+  };
+
+  // Don't render anything until mounted to avoid hydration issues
+  if (!mounted) {
+    return (
+      <div className="flex-1 flex flex-col bg-background overflow-hidden">
+        <div className="border-b bg-background p-4">
+          <div className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            <h1 className="text-lg font-semibold">Settings</h1>
+            <div className="ml-auto flex items-center gap-2">
+              <ModeToggle />
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="w-full max-w-2xl mx-auto space-y-6">
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="ml-2">Loading settings...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
@@ -203,92 +300,80 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 API Keys Status
-                {/* {isLoading && (
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                )} */}
+                <small className="text-xs text-muted-foreground ml-2">
+                  Last updated: {lastUpdated}
+                </small>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkAPIKeysAndDatabase}
+                  disabled={isLoading}
+                  className="ml-auto"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    "Refresh"
+                  )}
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    <StatusIcon
-                      status={apiKeyStatus.openai}
-                      isLoading={isLoading}
-                    />
-                    <div>
+                    {getStatusIcon(apiKeyStatus.openai.status)}
+                    <div className="flex-1">
                       <div className="font-medium text-sm">OpenAI API Key</div>
                       <div className="text-xs text-muted-foreground">
+                        {getStatusDescription(
+                          apiKeyStatus.openai.status,
+                          apiKeyStatus.openai.error
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
                         Required for GPT models (GPT-4, GPT-4o, etc.)
                       </div>
                     </div>
                   </div>
-                  <Badge
-                    variant={
-                      apiKeyStatus.openai
-                        ? "default"
-                        : isLoading
-                        ? "secondary"
-                        : "outline"
-                    }
-                    className="flex items-center gap-1"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Checking...
-                      </>
-                    ) : apiKeyStatus.openai ? (
-                      "Configured"
-                    ) : (
-                      "Not Configured"
-                    )}
-                  </Badge>
+                  {getStatusBadge(apiKeyStatus.openai.status)}
                 </div>
 
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    <StatusIcon
-                      status={apiKeyStatus.gemini}
-                      isLoading={isLoading}
-                    />
-                    <div>
+                    {getStatusIcon(apiKeyStatus.gemini.status)}
+                    <div className="flex-1">
                       <div className="font-medium text-sm">
                         Google Gemini API Key
                       </div>
                       <div className="text-xs text-muted-foreground">
+                        {getStatusDescription(
+                          apiKeyStatus.gemini.status,
+                          apiKeyStatus.gemini.error
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
                         Required for Gemini models (Gemini Pro, Flash, etc.)
                       </div>
                     </div>
                   </div>
-                  <Badge
-                    variant={
-                      apiKeyStatus.gemini
-                        ? "default"
-                        : isLoading
-                        ? "secondary"
-                        : "outline"
-                    }
-                    className="flex items-center gap-1"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Checking...
-                      </>
-                    ) : apiKeyStatus.gemini ? (
-                      "Configured"
-                    ) : (
-                      "Not Configured"
-                    )}
-                  </Badge>
+                  {getStatusBadge(apiKeyStatus.gemini.status)}
                 </div>
               </div>
 
-              {(!apiKeyStatus.openai || !apiKeyStatus.gemini) && (
-                <div className="text-xs text-warning bg-transparent  p-3 rounded-lg border border-warning">
-                  Searching for and testing API keys. Configure them in your
-                  environment variables (.env file).
+              {(apiKeyStatus.openai.status === "missing" ||
+                apiKeyStatus.gemini.status === "missing") && (
+                <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+                  Some API keys are missing. Configure them in your environment
+                  variables (.env file) to enable all features.
+                </div>
+              )}
+
+              {(apiKeyStatus.openai.status === "failed" ||
+                apiKeyStatus.gemini.status === "failed") && (
+                <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                  Some API keys are configured but not working. Please check
+                  your API keys and try again.
                 </div>
               )}
             </CardContent>
@@ -298,10 +383,6 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Database Configuration
-                {/* <StatusIcon
-                  status={databaseInfo.connected}
-                  isLoading={isLoading}
-                /> */}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">

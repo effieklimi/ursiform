@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { SideNavigation } from "@/components/side-navigation";
-import { ChatHeader } from "@/components/chat/ChatHeader";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageList } from "@/components/chat/MessageList";
-import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { useDataFormatting } from "@/components/chat/useDataFormatting";
-import { useChatLogic } from "@/components/chat/useChatLogic";
+import { ChatHeader } from "@/components/chat/chat-header";
+import { ChatInput } from "@/components/chat/chat-input";
+import { MessageList } from "@/components/chat/message-list";
+import { ChatSidebar } from "@/components/chat/chat-sidebar";
+import { useDataFormatting } from "@/components/chat/use-data-formatting";
+import { useChatLogic } from "@/components/chat/use-chat-logic";
 import { ChatMessage } from "@/lib/types";
 import { useAtom } from "jotai";
 import {
