@@ -3,7 +3,7 @@ import { TestTRPC } from "@/components/test-trpc";
 
 export const metadata = {
   title: "Chat - Yearn",
-  description: "Ask questions about your vector collections in plain English",
+  description: "Chat with your vector collections in natural language.",
 };
 
 export default function Chat() {
