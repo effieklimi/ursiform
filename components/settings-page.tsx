@@ -352,9 +352,12 @@ export function SettingsPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    {getStatusIcon(apiKeyStatus.openai.status)}
                     <div className="flex-1">
+                      {/* <div className="flex flex-row items-center gap-2"> */}
                       <div className="font-medium text-sm">OpenAI API Key</div>
+                      {/* {getStatusIcon(apiKeyStatus.openai.status)}
+                      </div> */}
+
                       <div className="text-xs text-muted-foreground">
                         {getStatusDescription(
                           apiKeyStatus.openai.status,
@@ -368,7 +371,7 @@ export function SettingsPage() {
 
                 <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                   <div className="flex items-center gap-3">
-                    {getStatusIcon(apiKeyStatus.gemini.status)}
+                    {/* {getStatusIcon(apiKeyStatus.gemini.status)} */}
                     <div className="flex-1">
                       <div className="font-medium text-sm">
                         Google Gemini API Key
@@ -460,7 +463,11 @@ export function SettingsPage() {
                         ? "secondary"
                         : "outline"
                     }
-                    className="flex items-center gap-1"
+                    className={
+                      databaseInfo.hasApiKey
+                        ? "bg-success"
+                        : "bg-secondary flex items-center gap-1"
+                    }
                   >
                     {isLoading ? (
                       <>
@@ -486,6 +493,9 @@ export function SettingsPage() {
                   </div>
                   <Badge
                     variant={databaseInfo.hasApiKey ? "default" : "secondary"}
+                    className={
+                      databaseInfo.hasApiKey ? "bg-success" : "bg-secondary"
+                    }
                   >
                     {databaseInfo.hasApiKey ? "Configured" : "Optional"}
                   </Badge>
