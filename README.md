@@ -168,10 +168,12 @@ Query the vector database using natural language.
 ## Architecture
 
 - **Frontend**: Next.js with TypeScript and Tailwind CSS
-- **Backend**: Next.js API routes
+  - **App Directory**: `/app` - Next.js app router (pages, layouts, API routes)
+  - **Components**: `/frontend/components` - Reusable React components
+  - **Styles**: `/frontend/styles` - Global CSS and styling
+- **Backend**: Next.js API routes and server logic (organized in `/backend` directory)
 - **Vector Database**: Qdrant
 - **AI**: OpenAI GPT and Google Gemini
--
 
 ## Contributing
 
@@ -201,7 +203,7 @@ This project uses TRPC with Next.js App Directory (not Pages directory). The TRP
 
 ### Client Setup
 
-- **Provider**: `components/providers/trpc-provider.tsx` - TRPC React Query provider
+- **Provider**: `frontend/components/providers/trpc-provider.tsx` - TRPC React Query provider
 - **Layout**: App directory layout automatically includes the TRPC provider
 
 ### Testing TRPC

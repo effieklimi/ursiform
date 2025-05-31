@@ -1,4 +1,4 @@
-import "../styles/globals.css";
+import "../frontend/styles/globals.css";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Provider } from "jotai";

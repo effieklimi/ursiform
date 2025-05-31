@@ -15,7 +15,7 @@ The project uses tRPC for type-safe communication between frontend and backend:
 
 - **Server Setup**: `lib/trpc.ts` - Core tRPC configuration
 - **Routers**: `lib/routers/` - API route definitions
-- **Client Provider**: `components/providers/trpc-provider.tsx` - React provider
+- **Client Provider**: `frontend/components/providers/trpc-provider.tsx` - React provider
 - **API Endpoint**: `/api/trpc/[trpc].ts` - Next.js API route
 
 ### Available tRPC Endpoints
@@ -147,10 +147,10 @@ DATABASE_URL="file:./dev.db"
 │       └── message.ts      # Message operations
 ├── pages/api/trpc/
 │   └── [trpc].ts          # Next.js API handler
-├── components/providers/
-│   └── trpc-provider.tsx  # React tRPC provider
-├── app/
-│   └── layout.tsx         # Root layout with providers
+├── app/                   # Next.js app router (at root as required)
+├── frontend/
+│   ├── components/providers/
+│   └── styles/
 └── .env                   # Environment variables
 ```
 
