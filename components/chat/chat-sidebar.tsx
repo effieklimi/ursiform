@@ -90,6 +90,23 @@ export function ChatSidebar({
                       <div className="text-sm font-medium truncate mb-1">
                         {chat.title || "Untitled Chat"}
                       </div>
+                      {/* Tags as badges */}
+                      {(chat as any).parsedTags &&
+                        (chat as any).parsedTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {(chat as any).parsedTags.map(
+                              (tag: string, index: number) => (
+                                <Badge
+                                  key={index}
+                                  variant="secondary"
+                                  className="text-xs px-1.5 py-0.5 h-auto bg-muted/60 text-muted-foreground hover:bg-muted/80"
+                                >
+                                  {tag}
+                                </Badge>
+                              )
+                            )}
+                          </div>
+                        )}
                       <div className="text-xs text-muted-foreground">
                         {new Date(chat.createdAt).toLocaleDateString("en-US", {
                           month: "short",

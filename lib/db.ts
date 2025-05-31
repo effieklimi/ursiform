@@ -5,12 +5,32 @@ export type ChatWithMessages = Chat & {
   messages: Message[];
 };
 
+export type ChatWithTags = Chat & {
+  parsedTags?: string[];
+};
+
 export class DatabaseService {
+  // Helper method to parse tags from JSON string
+  static parseTags(tagsJson: string | null): string[] {
+    if (!tagsJson) return [];
+    try {
+      return JSON.parse(tagsJson);
+    } catch {
+      return [];
+    }
+  }
+
+  // Helper method to stringify tags to JSON
+  static stringifyTags(tags: string[]): string {
+    return JSON.stringify(tags);
+  }
+
   // Chat operations
-  static async createChat(title?: string): Promise<Chat> {
+  static async createChat(title?: string, tags?: string[]): Promise<Chat> {
     return prisma.chat.create({
       data: {
         title: title || null,
+        tags: tags && tags.length > 0 ? this.stringifyTags(tags) : null,
       },
     });
   }
@@ -26,16 +46,30 @@ export class DatabaseService {
     });
   }
 
-  static async getAllChats(): Promise<Chat[]> {
-    return prisma.chat.findMany({
+  static async getAllChats(): Promise<ChatWithTags[]> {
+    const chats = await prisma.chat.findMany({
       orderBy: { updatedAt: "desc" },
     });
+
+    return chats.map((chat) => ({
+      ...chat,
+      parsedTags: this.parseTags(chat.tags),
+    }));
   }
 
-  static async updateChat(id: string, title: string): Promise<Chat> {
+  static async updateChat(
+    id: string,
+    title: string,
+    tags?: string[]
+  ): Promise<Chat> {
+    const updateData: { title: string; tags?: string | null } = { title };
+    if (tags !== undefined) {
+      updateData.tags = tags.length > 0 ? this.stringifyTags(tags) : null;
+    }
+
     return prisma.chat.update({
       where: { id },
-      data: { title },
+      data: updateData,
     });
   }
 

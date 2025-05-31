@@ -5,9 +5,14 @@ import { trpc } from "@/components/providers/trpc-provider";
 import { ChatMessage } from "@/lib/types";
 import { Chat, Message } from "@prisma/client";
 
+// Type for chat with parsed tags
+type ChatWithTags = Chat & {
+  parsedTags?: string[];
+};
+
 export function useChatPersistence() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [chats, setChats] = useState<ChatWithTags[]>([]);
 
   // tRPC queries and mutations
   const utils = trpc.useUtils();
@@ -15,7 +20,12 @@ export function useChatPersistence() {
   const createChatMutation = trpc.chat.create.useMutation({
     onSuccess: (newChat: Chat) => {
       setCurrentChatId(newChat.id);
-      setChats((prev) => [newChat, ...prev]);
+      // Convert to ChatWithTags and add to state
+      const chatWithTags: ChatWithTags = {
+        ...newChat,
+        parsedTags: newChat.tags ? JSON.parse(newChat.tags) : [],
+      };
+      setChats((prev) => [chatWithTags, ...prev]);
     },
   });
 
@@ -26,29 +36,34 @@ export function useChatPersistence() {
     },
   });
 
-  const generateTitleMutation = trpc.chat.generateTitle.useMutation({
-    onSuccess: (updatedChat: Chat) => {
-      // Update the chat in the local state
-      setChats((prev) =>
-        prev.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
-      );
-    },
-  });
+  const generateTitleAndTagsMutation =
+    trpc.chat.generateTitleAndTags.useMutation({
+      onSuccess: (updatedChat: Chat) => {
+        // Update the chat in the local state with parsed tags
+        const chatWithTags: ChatWithTags = {
+          ...updatedChat,
+          parsedTags: updatedChat.tags ? JSON.parse(updatedChat.tags) : [],
+        };
+        setChats((prev) =>
+          prev.map((chat) => (chat.id === updatedChat.id ? chatWithTags : chat))
+        );
+      },
+    });
 
   const { data: allChats } = trpc.chat.getAll.useQuery();
 
   // Load chats when component mounts
   useEffect(() => {
     if (allChats) {
-      setChats(allChats);
+      setChats(allChats as ChatWithTags[]);
     }
   }, [allChats]);
 
   // Create a new chat
   const createNewChat = useCallback(
-    async (title?: string) => {
+    async (title?: string, tags?: string[]) => {
       try {
-        const newChat = await createChatMutation.mutateAsync({ title });
+        const newChat = await createChatMutation.mutateAsync({ title, tags });
         return newChat;
       } catch (error) {
         console.error("Error creating chat:", error);
@@ -90,28 +105,38 @@ export function useChatPersistence() {
     [utils]
   );
 
-  // Generate title for a chat
-  const generateChatTitle = useCallback(
-    async (chatId: string, userMessage: string, assistantMessage: string) => {
+  // Generate title and tags for a chat
+  const generateChatTitleAndTags = useCallback(
+    async (
+      chatId: string,
+      userMessage: string,
+      assistantMessage: string,
+      selectedCollection?: string
+    ) => {
       try {
-        console.log("🏷️ Generating title for chat:", chatId);
-        await generateTitleMutation.mutateAsync({
+        console.log("🏷️ Generating title and tags for chat:", chatId);
+        await generateTitleAndTagsMutation.mutateAsync({
           chatId,
           userMessage,
           assistantMessage,
+          selectedCollection,
         });
-        console.log("✅ Chat title generated successfully");
+        console.log("✅ Chat title and tags generated successfully");
       } catch (error) {
-        console.error("Error generating chat title:", error);
+        console.error("Error generating chat title and tags:", error);
         // Don't throw - title generation is not critical
       }
     },
-    [generateTitleMutation]
+    [generateTitleAndTagsMutation]
   );
 
   // Save both user and assistant messages for a conversation turn
   const saveConversationTurn = useCallback(
-    async (userMessage: ChatMessage, assistantMessage: ChatMessage) => {
+    async (
+      userMessage: ChatMessage,
+      assistantMessage: ChatMessage,
+      selectedCollection?: string
+    ) => {
       try {
         // Create a new chat if none exists
         let chatId = currentChatId;
@@ -126,7 +151,7 @@ export function useChatPersistence() {
         }
 
         // Check if this is the first exchange (only if not a new chat)
-        const shouldGenerateTitle =
+        const shouldGenerateTitleAndTags =
           isNewChat || (await isFirstExchange(chatId));
 
         // Save user message
@@ -135,13 +160,14 @@ export function useChatPersistence() {
         // Save assistant message
         await saveMessage(chatId, "assistant", assistantMessage.content);
 
-        // Generate title automatically after first exchange
-        if (shouldGenerateTitle) {
+        // Generate title and tags automatically after first exchange
+        if (shouldGenerateTitleAndTags) {
           // Don't await this - let it run in background
-          generateChatTitle(
+          generateChatTitleAndTags(
             chatId,
             userMessage.content,
-            assistantMessage.content
+            assistantMessage.content,
+            selectedCollection
           );
         }
 
@@ -156,7 +182,7 @@ export function useChatPersistence() {
       createNewChat,
       saveMessage,
       isFirstExchange,
-      generateChatTitle,
+      generateChatTitleAndTags,
     ]
   );
 
@@ -206,9 +232,9 @@ export function useChatPersistence() {
     loadChatMessages,
     switchToChat,
     startNewChat,
-    generateChatTitle,
+    generateChatTitleAndTags,
     isCreatingChat: createChatMutation.isPending,
     isSavingMessage: addMessageMutation.isPending,
-    isGeneratingTitle: generateTitleMutation.isPending,
+    isGeneratingTitleAndTags: generateTitleAndTagsMutation.isPending,
   };
 }

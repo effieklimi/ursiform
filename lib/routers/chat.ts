@@ -17,9 +17,14 @@ export const chatRouter = createTRPCRouter({
 
   // Create a new chat
   create: publicProcedure
-    .input(z.object({ title: z.string().optional() }))
+    .input(
+      z.object({
+        title: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      })
+    )
     .mutation(async ({ input }) => {
-      return await DatabaseService.createChat(input.title);
+      return await DatabaseService.createChat(input.title, input.tags);
     }),
 
   // Update chat title
@@ -29,13 +34,14 @@ export const chatRouter = createTRPCRouter({
       return await DatabaseService.updateChat(input.id, input.title);
     }),
 
-  // Generate and update chat title automatically
-  generateTitle: publicProcedure
+  // Generate and update chat title and tags automatically
+  generateTitleAndTags: publicProcedure
     .input(
       z.object({
         chatId: z.string(),
         userMessage: z.string(),
         assistantMessage: z.string(),
+        selectedCollection: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -46,18 +52,33 @@ export const chatRouter = createTRPCRouter({
           input.assistantMessage
         );
 
-        // Update the chat with the generated title
+        // Generate contextual tags
+        const tags = generateChatTags(
+          input.userMessage,
+          input.assistantMessage,
+          input.selectedCollection
+        );
+
+        // Update the chat with the generated title and tags
         const updatedChat = await DatabaseService.updateChat(
           input.chatId,
-          title
+          title,
+          tags
         );
 
         return updatedChat;
       } catch (error) {
-        console.error("Error generating chat title:", error);
+        console.error("Error generating chat title and tags:", error);
         // Fallback to a simple title if generation fails
         const fallbackTitle = `Chat - ${new Date().toLocaleDateString()}`;
-        return await DatabaseService.updateChat(input.chatId, fallbackTitle);
+        const fallbackTags = input.selectedCollection
+          ? [input.selectedCollection]
+          : ["General"];
+        return await DatabaseService.updateChat(
+          input.chatId,
+          fallbackTitle,
+          fallbackTags
+        );
       }
     }),
 
@@ -90,6 +111,116 @@ async function generateChatTitle(
     const words = userMessage.split(" ").slice(0, 4);
     return words.join(" ") + (userMessage.split(" ").length > 4 ? "..." : "");
   }
+}
+
+// Helper function to generate contextual tags
+function generateChatTags(
+  userMessage: string,
+  assistantMessage: string,
+  selectedCollection?: string
+): string[] {
+  const tags: string[] = [];
+
+  // Add collection tag if specific collection was selected
+  if (selectedCollection) {
+    tags.push(selectedCollection);
+  }
+
+  // Determine query type based on user message
+  const message = userMessage.toLowerCase();
+
+  // Check for different types of queries/actions
+  if (
+    message.includes("show") ||
+    message.includes("find") ||
+    message.includes("search") ||
+    message.includes("get") ||
+    message.includes("list")
+  ) {
+    tags.push("Query");
+  } else if (
+    message.includes("how many") ||
+    message.includes("count") ||
+    message.includes("how much")
+  ) {
+    tags.push("Count");
+  } else if (
+    message.includes("what") ||
+    message.includes("who") ||
+    message.includes("when") ||
+    message.includes("where")
+  ) {
+    tags.push("Question");
+  } else if (
+    message.includes("why") ||
+    message.includes("explain") ||
+    message.includes("tell me about")
+  ) {
+    tags.push("Explanation");
+  } else if (
+    message.includes("how") &&
+    (message.includes("work") || message.includes("do"))
+  ) {
+    tags.push("How-to");
+  } else if (
+    message.includes("compare") ||
+    message.includes("difference") ||
+    message.includes("versus") ||
+    message.includes("vs")
+  ) {
+    tags.push("Comparison");
+  } else if (
+    message.includes("create") ||
+    message.includes("add") ||
+    message.includes("insert") ||
+    message.includes("update") ||
+    message.includes("delete") ||
+    message.includes("modify")
+  ) {
+    tags.push("Action");
+  } else {
+    tags.push("General");
+  }
+
+  // Add content-specific tags based on keywords
+  if (
+    message.includes("artist") ||
+    message.includes("artwork") ||
+    message.includes("painting") ||
+    message.includes("sculpture")
+  ) {
+    tags.push("Art");
+  } else if (
+    message.includes("document") ||
+    message.includes("paper") ||
+    message.includes("text") ||
+    message.includes("file")
+  ) {
+    tags.push("Documents");
+  } else if (
+    message.includes("data") ||
+    message.includes("database") ||
+    message.includes("collection")
+  ) {
+    tags.push("Data");
+  } else if (
+    message.includes("algorithm") ||
+    message.includes("machine learning") ||
+    message.includes("ai") ||
+    message.includes("neural")
+  ) {
+    tags.push("AI/ML");
+  } else if (
+    message.includes("api") ||
+    message.includes("code") ||
+    message.includes("programming") ||
+    message.includes("development")
+  ) {
+    tags.push("Technical");
+  }
+
+  // Limit to 2 tags maximum, prioritize most specific ones
+  return tags.slice(0, 2);
 }
 
 // Simple title extraction function

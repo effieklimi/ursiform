@@ -100,7 +100,11 @@ export default function ChatPage() {
 
       // Save the conversation turn to the database
       try {
-        await saveConversationTurn(userMessage, assistantMessage);
+        await saveConversationTurn(
+          userMessage,
+          assistantMessage,
+          selectedCollection
+        );
         console.log("💾 SAVED CONVERSATION TURN TO DATABASE");
       } catch (saveError) {
         console.error("Failed to save conversation turn:", saveError);
