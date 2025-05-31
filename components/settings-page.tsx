@@ -50,6 +50,49 @@ interface DatabaseInfo {
   error?: string;
 }
 
+// Utility function to sanitize error messages and remove potential API keys
+const sanitizeErrorMessage = (errorMessage: string): string => {
+  if (!errorMessage) return errorMessage;
+
+  let sanitized = errorMessage;
+
+  // Common API key patterns to redact
+  const patterns = [
+    // OpenAI API keys (start with sk-)
+    /sk-[a-zA-Z0-9]{20,}/g,
+    // Google/Gemini API keys (typically 39 characters long, alphanumeric with hyphens)
+    /AIza[a-zA-Z0-9_-]{35}/g,
+    // Bearer tokens (capture the full Bearer + token)
+    /Bearer\s+[a-zA-Z0-9_-]{10,}/gi,
+    // Authorization headers (capture full authorization line)
+    /Authorization[:\s]*[a-zA-Z0-9_\-\s]+/gi,
+    // Generic API key patterns in key=value format
+    /api[_-]?key[=:]\s*['"]*[a-zA-Z0-9_-]{10,}['"]*\s*/gi,
+    /key[=:]\s*['"]*[a-zA-Z0-9_-]{10,}['"]*\s*/gi,
+    // URL-embedded API keys (query parameters) - more specific patterns
+    /[?&]key=[a-zA-Z0-9_-]{10,}/gi,
+    /[?&]api[_-]?key=[a-zA-Z0-9_-]{10,}/gi,
+    // Basic auth credentials in URLs
+    /\/\/[^:\s\/]+:[^@\s\/]+@/g,
+  ];
+
+  // Apply all patterns to redact sensitive information
+  patterns.forEach((pattern) => {
+    sanitized = sanitized.replace(pattern, "[REDACTED]");
+  });
+
+  // Additional specific sanitization for common error contexts
+
+  // Remove any remaining long alphanumeric strings that might be keys (32+ chars)
+  sanitized = sanitized.replace(/\b[a-zA-Z0-9_-]{32,}\b/g, "[REDACTED]");
+
+  // Clean up any duplicate redactions or formatting issues
+  sanitized = sanitized.replace(/\[REDACTED\]\[REDACTED\]/g, "[REDACTED]");
+  sanitized = sanitized.replace(/\s+/g, " ").trim();
+
+  return sanitized;
+};
+
 export function SettingsPage() {
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
   const [apiKeyStatus, setApiKeyStatus] = useState<APIKeyStatusInfo>({
@@ -189,7 +232,7 @@ export function SettingsPage() {
         return "API key is configured and working correctly";
       case "failed":
         return error
-          ? `API key failed: ${error}`
+          ? `${sanitizeErrorMessage(error)}`
           : "API key exists but is not working";
       case "testing":
         return "Testing API key...";
@@ -300,22 +343,6 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 API Keys Status
-                <small className="text-xs text-muted-foreground ml-2">
-                  Last updated: {lastUpdated}
-                </small>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={checkAPIKeysAndDatabase}
-                  disabled={isLoading}
-                  className="ml-auto"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    "Refresh"
-                  )}
-                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -330,9 +357,6 @@ export function SettingsPage() {
                           apiKeyStatus.openai.status,
                           apiKeyStatus.openai.error
                         )}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Required for GPT models (GPT-4, GPT-4o, etc.)
                       </div>
                     </div>
                   </div>
@@ -352,9 +376,6 @@ export function SettingsPage() {
                           apiKeyStatus.gemini.error
                         )}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Required for Gemini models (Gemini Pro, Flash, etc.)
-                      </div>
                     </div>
                   </div>
                   {getStatusBadge(apiKeyStatus.gemini.status)}
@@ -363,7 +384,7 @@ export function SettingsPage() {
 
               {(apiKeyStatus.openai.status === "missing" ||
                 apiKeyStatus.gemini.status === "missing") && (
-                <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="text-xs text-warning   p-3 rounded-lg border border-warning">
                   Some API keys are missing. Configure them in your environment
                   variables (.env file) to enable all features.
                 </div>
@@ -371,7 +392,7 @@ export function SettingsPage() {
 
               {(apiKeyStatus.openai.status === "failed" ||
                 apiKeyStatus.gemini.status === "failed") && (
-                <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                <div className="text-xs text-destructive   p-3 rounded-lg border border-destructive">
                   Some API keys are configured but not working. Please check
                   your API keys and try again.
                 </div>
@@ -470,7 +491,8 @@ export function SettingsPage() {
 
               {databaseInfo.error && (
                 <div className="text-xs text-destructive  bg-background p-3 rounded-lg border border-destructive">
-                  <strong>Connection Error:</strong> {databaseInfo.error}
+                  <strong>Connection Error:</strong>{" "}
+                  {sanitizeErrorMessage(databaseInfo.error)}
                 </div>
               )}
 
