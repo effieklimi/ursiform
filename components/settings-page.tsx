@@ -203,7 +203,10 @@ export function SettingsPage() {
     switch (status) {
       case "working":
         return (
-          <Badge variant="default" className="bg-success hover:bg-success">
+          <Badge
+            variant="default"
+            className="bg-success text-success-foreground"
+          >
             Working
           </Badge>
         );
