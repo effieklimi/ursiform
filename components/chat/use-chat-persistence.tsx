@@ -26,6 +26,15 @@ export function useChatPersistence() {
     },
   });
 
+  const generateTitleMutation = trpc.chat.generateTitle.useMutation({
+    onSuccess: (updatedChat: Chat) => {
+      // Update the chat in the local state
+      setChats((prev) =>
+        prev.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
+      );
+    },
+  });
+
   const { data: allChats } = trpc.chat.getAll.useQuery();
 
   // Load chats when component mounts
@@ -67,18 +76,58 @@ export function useChatPersistence() {
     [addMessageMutation]
   );
 
+  // Check if this is the first exchange in a chat
+  const isFirstExchange = useCallback(
+    async (chatId: string): Promise<boolean> => {
+      try {
+        const messages = await utils.message.getByChatId.fetch({ chatId });
+        return messages.length === 0; // No messages yet means this will be the first exchange
+      } catch (error) {
+        console.error("Error checking message count:", error);
+        return false;
+      }
+    },
+    [utils]
+  );
+
+  // Generate title for a chat
+  const generateChatTitle = useCallback(
+    async (chatId: string, userMessage: string, assistantMessage: string) => {
+      try {
+        console.log("🏷️ Generating title for chat:", chatId);
+        await generateTitleMutation.mutateAsync({
+          chatId,
+          userMessage,
+          assistantMessage,
+        });
+        console.log("✅ Chat title generated successfully");
+      } catch (error) {
+        console.error("Error generating chat title:", error);
+        // Don't throw - title generation is not critical
+      }
+    },
+    [generateTitleMutation]
+  );
+
   // Save both user and assistant messages for a conversation turn
   const saveConversationTurn = useCallback(
     async (userMessage: ChatMessage, assistantMessage: ChatMessage) => {
       try {
         // Create a new chat if none exists
         let chatId = currentChatId;
+        let isNewChat = false;
+
         if (!chatId) {
           const newChat = await createNewChat(
             `Chat ${new Date().toLocaleString()}`
           );
           chatId = newChat.id;
+          isNewChat = true;
         }
+
+        // Check if this is the first exchange (only if not a new chat)
+        const shouldGenerateTitle =
+          isNewChat || (await isFirstExchange(chatId));
 
         // Save user message
         await saveMessage(chatId, "user", userMessage.content);
@@ -86,13 +135,29 @@ export function useChatPersistence() {
         // Save assistant message
         await saveMessage(chatId, "assistant", assistantMessage.content);
 
+        // Generate title automatically after first exchange
+        if (shouldGenerateTitle) {
+          // Don't await this - let it run in background
+          generateChatTitle(
+            chatId,
+            userMessage.content,
+            assistantMessage.content
+          );
+        }
+
         return chatId;
       } catch (error) {
         console.error("Error saving conversation turn:", error);
         throw error;
       }
     },
-    [currentChatId, createNewChat, saveMessage]
+    [
+      currentChatId,
+      createNewChat,
+      saveMessage,
+      isFirstExchange,
+      generateChatTitle,
+    ]
   );
 
   // Load messages for a specific chat
@@ -141,7 +206,9 @@ export function useChatPersistence() {
     loadChatMessages,
     switchToChat,
     startNewChat,
+    generateChatTitle,
     isCreatingChat: createChatMutation.isPending,
     isSavingMessage: addMessageMutation.isPending,
+    isGeneratingTitle: generateTitleMutation.isPending,
   };
 }
