@@ -1,4 +1,4 @@
-# Ursiform
+# <img src="public/ursiform.svg" alt="Ursiform" width="28" height="28" style="display: inline-block; vertical-align: middle; margin-right: 8px;" /> Ursiform
 
 A natural language interface for vector databases. Works on the browser. Query your data in plain English and get context-aware, conversational answers.
 
