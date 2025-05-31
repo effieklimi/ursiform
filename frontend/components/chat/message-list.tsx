@@ -5,6 +5,7 @@ import { Bot, User, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import { ChatMessage } from "@/lib/types";
+import { UrsiformLogo } from "../icons/UrsiformLogo";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -33,7 +34,14 @@ export function MessageList({
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full text-muted-foreground">
           <div className="text-center">
-            <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+            {/* <img
+              src="/ursiform.svg"
+              alt="ursiform"
+              width={100}
+              height={100}
+              className="w-10 h-10 mx-auto mb-3 opacity-50"
+            /> */}
+            <UrsiformLogo className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p className="text-sm">
               Ask me anything about your vector database!
             </p>

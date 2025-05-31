@@ -1,0 +1,69 @@
+/* Styling for the Ursiform logo SVG */
+
+/* Target the SVG when used as img src or background */
+.ursiform-logo {
+  filter: brightness(0) saturate(100%) invert(0%) sepia(0%) saturate(0%)
+    hue-rotate(0deg) brightness(10%) contrast(100%);
+  /* This filter makes any image black. You can adjust these values to get different colors */
+}
+
+/* For dark mode, you might want to invert the logo */
+.dark .ursiform-logo {
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+/* Alternative: If you inline the SVG in your HTML, you can directly style the paths */
+.ursiform-logo-inline path {
+  fill: hsl(var(--primary));
+  transition: fill 0.2s ease;
+}
+
+.ursiform-logo-inline:hover path {
+  fill: hsl(var(--primary) / 0.8);
+}
+
+/* Different color variants */
+.ursiform-logo-inline.logo-secondary path {
+  fill: hsl(var(--secondary-foreground));
+}
+
+.ursiform-logo-inline.logo-success path {
+  fill: hsl(var(--success));
+}
+
+.ursiform-logo-inline.logo-destructive path {
+  fill: hsl(var(--destructive));
+}
+
+.ursiform-logo-inline.logo-warning path {
+  fill: hsl(var(--warning));
+}
+
+.ursiform-logo-inline.logo-muted path {
+  fill: hsl(var(--muted-foreground));
+}
+
+/* Custom color using arbitrary values */
+.ursiform-logo-custom path {
+  fill: hsl(220 70% 50%); /* Custom blue */
+}
+
+/* Responsive sizing */
+.ursiform-logo-responsive {
+  width: 2rem;
+  height: 2rem;
+}
+
+@media (min-width: 768px) {
+  .ursiform-logo-responsive {
+    width: 4rem;
+    height: 4rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ursiform-logo-responsive {
+    width: 6rem;
+    height: 6rem;
+  }
+}

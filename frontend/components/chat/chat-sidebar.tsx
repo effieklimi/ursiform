@@ -48,21 +48,17 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <div className="w-80 flex-shrink-0 border-r bg-background flex flex-col h-full">
-      {/* Header with New Chat Button */}
-      <div className="p-4 border-b">
-        <button
-          onClick={onNewChat}
-          className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </button>
-      </div>
-
       {/* Chat List - Most Prominent */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
           <h3 className="text-sm font-medium text-foreground">Recent Chats</h3>
+          <button
+            onClick={onNewChat}
+            className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 transition-colors text-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Chat
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {chats.length === 0 ? (
