@@ -376,30 +376,6 @@ export function SettingsPage() {
                   your API keys and try again.
                 </div>
               )}
-
-              <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="font-medium mb-1">
-                  Environment Variable Priority:
-                </div>
-                <div className="text-xs mb-2">
-                  Next.js stops searching once a variable is found:
-                </div>
-                <div className="space-y-1">
-                  <div>
-                    1. Shell environment (from ~/.zshrc, ~/.bashrc) -{" "}
-                    <strong>cannot be overridden</strong>
-                  </div>
-                  <div>2. .env.development.local - development overrides</div>
-                  <div>3. .env.local - project-specific overrides</div>
-                  <div>4. .env.development - development defaults</div>
-                  <div>5. .env - project defaults - lowest priority</div>
-                </div>
-                <div className="mt-2">
-                  <strong>⚠️ Warning:</strong> Shell environment variables
-                  cannot be overridden by any .env files. Remove from shell to
-                  use .env files.
-                </div>
-              </div>
             </CardContent>
           </Card>
 
