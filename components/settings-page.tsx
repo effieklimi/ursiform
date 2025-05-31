@@ -188,9 +188,9 @@ export function SettingsPage() {
   const getStatusIcon = (status: APIKeyStatus) => {
     switch (status) {
       case "working":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-4 h-4 text-success" />;
       case "failed":
-        return <XCircle className="w-4 h-4 text-red-500" />;
+        return <XCircle className="w-4 h-4 text-destructive" />;
       case "testing":
         return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
       case "missing":
@@ -203,7 +203,7 @@ export function SettingsPage() {
     switch (status) {
       case "working":
         return (
-          <Badge variant="default" className="bg-green-500 hover:bg-green-600">
+          <Badge variant="default" className="bg-success hover:bg-success">
             Working
           </Badge>
         );
