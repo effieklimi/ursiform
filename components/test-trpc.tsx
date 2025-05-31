@@ -24,7 +24,7 @@ export function TestTRPC() {
 
   return (
     <div className="p-4 border rounded-lg">
-      <h2 className="text-lg font-bold mb-4">tRPC Test</h2>
+      {/* <h2 className="text-lg font-bold mb-4">tRPC Test</h2> */}
       <div className="space-y-2">
         <p>Chat Count: {chatCount}</p>
         <p>Message Count: {messageCount}</p>

@@ -9,9 +9,9 @@ export const metadata = {
 export default function Chat() {
   return (
     <div>
-      <div className="mb-6">
+      {/* <div className="mb-6">
         <TestTRPC />
-      </div>
+      </div> */}
       <ChatPage />
     </div>
   );
