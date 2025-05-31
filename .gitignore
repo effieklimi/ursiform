@@ -9,6 +9,9 @@ package-lock.json
 dist/
 build/
 
+
+.cursor/
+
 # Environment variables
 .env
 .env.local
