@@ -1,4 +1,4 @@
-import { embed } from "../../src/qdrant/embedder";
+import { embed } from "../../backend/qdrant/embedder";
 
 // Mock OpenAI
 jest.mock("openai", () => {

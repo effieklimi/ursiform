@@ -1,18 +1,18 @@
 import Fastify from "fastify";
-import { collectionsRoutes } from "../../src/routes/collections";
-import { vectorsRoutes } from "../../src/routes/vectors";
-import { translateRoutes } from "../../src/routes/translate";
-import { healthRoutes } from "../../src/routes/health";
+import { collectionsRoutes } from "../../backend/routes/collections";
+import { vectorsRoutes } from "../../backend/routes/vectors";
+import { translateRoutes } from "../../backend/routes/translate";
+import { healthRoutes } from "../../backend/routes/health";
 
 // Mock all external dependencies
-jest.mock("../../src/qdrant/db", () => ({
+jest.mock("../../backend/qdrant/db", () => ({
   createCollection: jest.fn().mockResolvedValue(undefined),
   client: {
     upsert: jest.fn().mockResolvedValue({}),
   },
 }));
 
-jest.mock("../../src/qdrant/translator", () => ({
+jest.mock("../../backend/qdrant/translator", () => ({
   translateAndSearch: jest.fn().mockResolvedValue([
     {
       id: "test-id",

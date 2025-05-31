@@ -1,15 +1,17 @@
 import Fastify from "fastify";
-import { documentsRoutes } from "../../src/routes/documents";
+import { documentsRoutes } from "../../backend/routes/documents";
 
-// Mock all external dependencies
-jest.mock("../../src/qdrant/db", () => ({
+// Mock external dependencies
+jest.mock("../../backend/qdrant/db", () => ({
+  createCollection: jest.fn().mockResolvedValue(undefined),
   client: {
+    search: jest.fn(),
     upsert: jest.fn().mockResolvedValue({}),
   },
 }));
 
-jest.mock("../../src/qdrant/embedder", () => ({
-  embed: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+jest.mock("../../backend/qdrant/embedder", () => ({
+  embed: jest.fn(),
 }));
 
 describe("Documents Routes Tests", () => {
@@ -51,13 +53,13 @@ describe("Documents Routes Tests", () => {
       });
 
       // Verify embedding was called
-      const { embed } = require("../../src/qdrant/embedder");
+      const { embed } = require("../../backend/qdrant/embedder");
       expect(embed).toHaveBeenCalledWith(
         "This is a test document about machine learning"
       );
 
       // Verify upsert was called with correct data
-      const { client } = require("../../src/qdrant/db");
+      const { client } = require("../../backend/qdrant/db");
       expect(client.upsert).toHaveBeenCalledWith("test_collection", {
         wait: true,
         points: [
@@ -111,7 +113,7 @@ describe("Documents Routes Tests", () => {
     });
 
     it("should handle embedding generation error", async () => {
-      const { embed } = require("../../src/qdrant/embedder");
+      const { embed } = require("../../backend/qdrant/embedder");
       embed.mockRejectedValue(new Error("Embedding failed"));
 
       const response = await app.inject({
@@ -165,13 +167,13 @@ describe("Documents Routes Tests", () => {
       });
 
       // Verify embedding was called for each document
-      const { embed } = require("../../src/qdrant/embedder");
+      const { embed } = require("../../backend/qdrant/embedder");
       expect(embed).toHaveBeenCalledTimes(2);
       expect(embed).toHaveBeenCalledWith("First document about AI");
       expect(embed).toHaveBeenCalledWith("Second document about ML");
 
       // Verify bulk upsert was called
-      const { client } = require("../../src/qdrant/db");
+      const { client } = require("../../backend/qdrant/db");
       expect(client.upsert).toHaveBeenCalledWith("test_collection", {
         wait: true,
         points: expect.arrayContaining([
@@ -196,7 +198,7 @@ describe("Documents Routes Tests", () => {
     });
 
     it("should handle partial failures in bulk operation", async () => {
-      const { embed } = require("../../src/qdrant/embedder");
+      const { embed } = require("../../backend/qdrant/embedder");
       embed
         .mockResolvedValueOnce([0.1, 0.2, 0.3, 0.4, 0.5]) // First document succeeds
         .mockRejectedValueOnce(new Error("Embedding failed")); // Second document fails
