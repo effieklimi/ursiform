@@ -8,6 +8,7 @@ import { MessageList } from "@/components/chat/message-list";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { useDataFormatting } from "@/components/chat/use-data-formatting";
 import { useChatLogic } from "@/components/chat/use-chat-logic";
+import { useChatPersistence } from "@/components/chat/use-chat-persistence";
 import { ChatMessage } from "@/lib/types";
 import { useAtom } from "jotai";
 import {
@@ -30,6 +31,16 @@ export default function ChatPage() {
 
   const { formatData } = useDataFormatting();
   const { collections, demoExamples } = useChatLogic(selectedModel);
+
+  // Chat persistence
+  const {
+    currentChatId,
+    chats,
+    saveConversationTurn,
+    switchToChat,
+    startNewChat,
+    isSavingMessage,
+  } = useChatPersistence();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +98,15 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
+      // Save the conversation turn to the database
+      try {
+        await saveConversationTurn(userMessage, assistantMessage);
+        console.log("💾 SAVED CONVERSATION TURN TO DATABASE");
+      } catch (saveError) {
+        console.error("Failed to save conversation turn:", saveError);
+        // Continue with the UI update even if saving fails
+      }
+
       if (data.context) {
         console.log("📝 UPDATING FRONTEND CONTEXT:");
         console.log("New context:", JSON.stringify(data.context, null, 2));
@@ -110,6 +130,29 @@ export default function ChatPage() {
     setInputValue(example);
   };
 
+  // Handle chat switching
+  const handleChatSwitch = async (chatId: string) => {
+    try {
+      const chatMessages = await switchToChat(chatId);
+      setMessages(chatMessages);
+      // Reset conversation context when switching chats
+      setConversationContext({
+        conversationHistory: [],
+      });
+    } catch (error) {
+      console.error("Error switching to chat:", error);
+    }
+  };
+
+  // Handle new chat creation
+  const handleNewChat = () => {
+    const emptyMessages = startNewChat();
+    setMessages(emptyMessages);
+    setConversationContext({
+      conversationHistory: [],
+    });
+  };
+
   return (
     <main className="h-screen w-screen bg-background text-foreground overflow-hidden">
       <div className="flex h-full">
@@ -127,6 +170,11 @@ export default function ChatPage() {
             setConversationContext={setConversationContext}
             demoExamples={demoExamples}
             handleExampleClick={handleExampleClick}
+            // Chat management props
+            chats={chats}
+            currentChatId={currentChatId}
+            onChatSwitch={handleChatSwitch}
+            onNewChat={handleNewChat}
           />
 
           {/* Chat Interface */}
@@ -137,7 +185,7 @@ export default function ChatPage() {
             {/* Chat Messages Area */}
             <MessageList
               messages={messages}
-              isLoading={isLoading}
+              isLoading={isLoading || isSavingMessage}
               formatData={formatData}
             />
 
@@ -145,7 +193,7 @@ export default function ChatPage() {
             <ChatInput
               inputValue={inputValue}
               setInputValue={setInputValue}
-              isLoading={isLoading}
+              isLoading={isLoading || isSavingMessage}
               onSubmit={handleSubmit}
             />
           </div>

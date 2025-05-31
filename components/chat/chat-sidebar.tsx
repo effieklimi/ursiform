@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Database } from "lucide-react";
+import { Bot, Database, MessageSquare, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConversationContext } from "@/lib/types";
+import { Chat } from "@prisma/client";
 
 interface DynamicExamples {
   database: string[];
@@ -25,6 +26,11 @@ interface ChatSidebarProps {
   setConversationContext: (context: ConversationContext) => void;
   demoExamples: DynamicExamples;
   handleExampleClick: (example: string) => void;
+  // Chat management props
+  chats: Chat[];
+  currentChatId: string | null;
+  onChatSwitch: (chatId: string) => void;
+  onNewChat: () => void;
 }
 
 export function ChatSidebar({
@@ -35,10 +41,61 @@ export function ChatSidebar({
   setConversationContext,
   demoExamples,
   handleExampleClick,
+  chats,
+  currentChatId,
+  onChatSwitch,
+  onNewChat,
 }: ChatSidebarProps) {
   return (
     <div className="w-80 flex-shrink-0 border-r bg-background overflow-y-auto">
       <div className="p-4 space-y-4">
+        {/* Chat History Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" />
+                Chat History
+              </div>
+              <button
+                onClick={onNewChat}
+                className="flex items-center gap-1 text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                New
+              </button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {chats.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-4">
+                No saved chats yet
+              </div>
+            ) : (
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {chats.map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => onChatSwitch(chat.id)}
+                    className={`text-xs text-left w-full p-2 rounded border transition-colors ${
+                      currentChatId === chat.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-accent hover:bg-accent/80"
+                    }`}
+                  >
+                    <div className="truncate">
+                      {chat.title || "Untitled Chat"}
+                    </div>
+                    <div className="text-xs opacity-70">
+                      {new Date(chat.createdAt).toLocaleDateString()}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
