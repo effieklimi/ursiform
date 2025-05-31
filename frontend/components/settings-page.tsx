@@ -539,7 +539,7 @@ export function SettingsPage() {
                     href="mailto:effie@effie.bio"
                     className="text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Contact
+                    Contact the developer
                   </Link>
                 </div>
                 <div className="border-t pt-4">

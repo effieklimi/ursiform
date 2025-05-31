@@ -45,9 +45,6 @@ export function MessageList({
             <p className="text-sm">
               Ask me anything about your vector database!
             </p>
-            <p className="text-xs mt-1">
-              Try the example queries on the left to get started.
-            </p>
           </div>
         </div>
       ) : (

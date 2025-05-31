@@ -30,7 +30,7 @@ export function ChatInput({
         <Button
           type="submit"
           disabled={isLoading || !inputValue.trim()}
-          className="h-12 px-6"
+          className="h-12 px-6 w-12"
         >
           <Send className="w-5 h-5" />
         </Button>

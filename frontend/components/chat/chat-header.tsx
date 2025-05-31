@@ -13,14 +13,13 @@ export function ChatHeader({ selectedModel }: ChatHeaderProps) {
   return (
     <div className="border-b bg-background p-2">
       <div className="flex items-center gap-2">
-        <UrsiformLogo className="w-8 h-8 opacity-50" />
-
         <div className="ml-auto flex items-center gap-2">
-          <Badge variant="outline" className="text-sm h-9">
+          <Badge variant="outline" className="text-xs h-9 font-normal">
             {AVAILABLE_MODELS[selectedModel].name}
           </Badge>
           <ModeToggle />
         </div>
+        <UrsiformLogo className="w-8 h-8 opacity-50" />
       </div>
     </div>
   );
