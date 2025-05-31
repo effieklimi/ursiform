@@ -22,6 +22,27 @@ OPENAI_API_KEY=...
 GEMINI_API_KEY=...
 ```
 
+#### Environment Variables
+
+#### Common Scenarios
+
+**Global API Keys**: If you use API keys across multiple projects, set them in your shell:
+
+```bash
+# In ~/.zshrc or ~/.bashrc
+export OPENAI_API_KEY="sk-your-global-key"
+export GEMINI_API_KEY="your-global-gemini-key"
+```
+
+**⚠️ Important**: Once set in your shell, these **cannot be overridden** by any `.env` files.
+
+**Project-Specific Keys**: If you need different keys per project, **do not** set them in your shell. Instead set the following in your `.env` or `.env.local`
+
+```bash
+OPENAI_API_KEY=<your-openai-key>
+GEMINI_API_KEY=<your-gemini-key>
+```
+
 For custom data schemas, you can optionally set:
 
 ```bash
@@ -93,6 +114,7 @@ DESCRIPTION_FIELD=abstract
    ```
 
 4. **Run the development server**
+
    ```bash
    npm run dev
    ```

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   let geminiError = null;
 
   // Test OpenAI API Key
-  if (openaiApiKey && !openaiApiKey.includes("<your-")) {
+  if (openaiApiKey) {
     openaiStatus = "testing";
     try {
       const response = await fetch("https://api.openai.com/v1/models", {
@@ -28,10 +28,20 @@ export async function GET(req: NextRequest) {
         openaiStatus = "working";
       } else {
         openaiStatus = "failed";
-        const errorText = await response
-          .text()
-          .catch(() => "Unable to read response");
-        openaiError = `HTTP ${response.status}: ${response.statusText} - ${errorText}`;
+        const responseText = await response.text();
+
+        try {
+          const errorData = JSON.parse(responseText);
+          // Extract the specific error message from OpenAI
+          if (errorData.error && errorData.error.message) {
+            openaiError = errorData.error.message;
+          } else {
+            openaiError = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        } catch {
+          // If we can't parse the JSON, use the raw response
+          openaiError = `HTTP ${response.status}: ${response.statusText} - ${responseText}`;
+        }
       }
     } catch (error) {
       openaiStatus = "failed";
@@ -41,10 +51,13 @@ export async function GET(req: NextRequest) {
         openaiError = "Unknown error testing OpenAI API";
       }
     }
+  } else {
+    // Only set to missing if there's literally no API key at all
+    openaiStatus = "missing";
   }
 
   // Test Gemini API Key
-  if (geminiApiKey && !geminiApiKey.includes("<your-")) {
+  if (geminiApiKey) {
     geminiStatus = "testing";
     try {
       // Test Gemini API with a simple request to list models
@@ -66,7 +79,19 @@ export async function GET(req: NextRequest) {
         const errorText = await response
           .text()
           .catch(() => "Unable to read response");
-        geminiError = `HTTP ${response.status}: ${response.statusText} - ${errorText}`;
+
+        try {
+          const errorData = JSON.parse(errorText);
+          // Extract the specific error message from Google
+          if (errorData.error && errorData.error.message) {
+            geminiError = errorData.error.message;
+          } else {
+            geminiError = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        } catch {
+          // If we can't parse the JSON, use the raw response
+          geminiError = `HTTP ${response.status}: ${response.statusText} - ${errorText}`;
+        }
       }
     } catch (error) {
       geminiStatus = "failed";
@@ -76,6 +101,9 @@ export async function GET(req: NextRequest) {
         geminiError = "Unknown error testing Gemini API";
       }
     }
+  } else {
+    // Only set to missing if there's literally no API key at all
+    geminiStatus = "missing";
   }
 
   // Check database configuration
