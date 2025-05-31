@@ -120,107 +120,253 @@ function generateChatTags(
   selectedCollection?: string
 ): string[] {
   const tags: string[] = [];
-
-  // Add collection tag if specific collection was selected
-  if (selectedCollection) {
-    tags.push(selectedCollection);
-  }
-
-  // Determine query type based on user message
   const message = userMessage.toLowerCase();
 
-  // Check for different types of queries/actions
+  // First priority: Add specific collection name if available
+  if (selectedCollection) {
+    tags.push(selectedCollection);
+  } else {
+    // Try to extract collection name from the message
+    const extractedCollection = extractCollectionNameFromMessage(message);
+    if (extractedCollection) {
+      tags.push(extractedCollection);
+    }
+  }
+
+  // Second priority: Determine query scope and type
+  const queryScope = determineQueryScope(message);
+  const queryType = determineQueryType(message);
+
+  // Add scope-specific tags
+  if (queryScope === "database") {
+    tags.push("Database-wide");
+  } else if (queryScope === "collections" && !selectedCollection) {
+    tags.push("Collections");
+  }
+
+  // Add query type tags (only if not redundant)
+  if (queryType && !tags.includes(queryType)) {
+    tags.push(queryType);
+  }
+
+  // Add content-specific tags only if we don't have collection/scope tags
+  if (tags.length < 2) {
+    const contentTag = determineContentType(message);
+    if (contentTag && !tags.includes(contentTag)) {
+      tags.push(contentTag);
+    }
+  }
+
+  // Remove duplicates and limit to 2 tags maximum
+  const uniqueTags = [...new Set(tags)];
+  return uniqueTags.slice(0, 2);
+}
+
+// Helper function to extract collection name from message
+function extractCollectionNameFromMessage(message: string): string | null {
+  // Look for common patterns that indicate collection names
+  const collectionPatterns = [
+    /from (\w+) collection/i,
+    /in (\w+) collection/i,
+    /(\w+) collection/i,
+    /about (\w+)/i,
+    /in (\w+)/i,
+  ];
+
+  for (const pattern of collectionPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      const potential = match[1].toLowerCase();
+      // Filter out common words that aren't collection names
+      const commonWords = [
+        "the",
+        "my",
+        "all",
+        "any",
+        "this",
+        "that",
+        "what",
+        "how",
+        "when",
+        "where",
+        "why",
+        "which",
+      ];
+      if (!commonWords.includes(potential) && potential.length > 2) {
+        return (
+          match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase()
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
+// Helper function to determine query scope
+function determineQueryScope(
+  message: string
+): "collection" | "database" | "collections" | null {
+  // Database-wide indicators
+  const databaseIndicators = [
+    "across all",
+    "database",
+    "all collections",
+    "total",
+    "overall",
+    "globally",
+    "entire database",
+    "whole database",
+    "all data",
+  ];
+
+  // Collections overview indicators
+  const collectionsIndicators = [
+    "what collections",
+    "how many collections",
+    "list collections",
+    "show collections",
+    "available collections",
+    "collections exist",
+  ];
+
+  if (databaseIndicators.some((indicator) => message.includes(indicator))) {
+    return "database";
+  }
+
+  if (collectionsIndicators.some((indicator) => message.includes(indicator))) {
+    return "collections";
+  }
+
+  return null;
+}
+
+// Helper function to determine query type
+function determineQueryType(message: string): string | null {
+  // Counting queries
   if (
-    message.includes("show") ||
-    message.includes("find") ||
-    message.includes("search") ||
-    message.includes("get") ||
-    message.includes("list")
-  ) {
-    tags.push("Query");
-  } else if (
     message.includes("how many") ||
     message.includes("count") ||
-    message.includes("how much")
+    message.includes("number of")
   ) {
-    tags.push("Count");
-  } else if (
-    message.includes("what") ||
-    message.includes("who") ||
-    message.includes("when") ||
-    message.includes("where")
+    return "Count";
+  }
+
+  // Analysis queries
+  if (
+    message.includes("analyze") ||
+    message.includes("analysis") ||
+    message.includes("breakdown")
   ) {
-    tags.push("Question");
-  } else if (
-    message.includes("why") ||
-    message.includes("explain") ||
-    message.includes("tell me about")
+    return "Analysis";
+  }
+
+  // Search/find queries
+  if (
+    message.includes("find") ||
+    message.includes("search") ||
+    message.includes("look for")
   ) {
-    tags.push("Explanation");
-  } else if (
-    message.includes("how") &&
-    (message.includes("work") || message.includes("do"))
+    return "Search";
+  }
+
+  // List/show queries
+  if (
+    message.includes("list") ||
+    message.includes("show") ||
+    message.includes("display")
   ) {
-    tags.push("How-to");
-  } else if (
+    return "List";
+  }
+
+  // Summary queries
+  if (
+    message.includes("summarize") ||
+    message.includes("summary") ||
+    message.includes("overview")
+  ) {
+    return "Summary";
+  }
+
+  // Top/ranking queries
+  if (
+    message.includes("top") ||
+    message.includes("most") ||
+    message.includes("highest") ||
+    message.includes("ranking")
+  ) {
+    return "Ranking";
+  }
+
+  // Comparison queries
+  if (
     message.includes("compare") ||
     message.includes("difference") ||
     message.includes("versus") ||
     message.includes("vs")
   ) {
-    tags.push("Comparison");
-  } else if (
-    message.includes("create") ||
-    message.includes("add") ||
-    message.includes("insert") ||
-    message.includes("update") ||
-    message.includes("delete") ||
-    message.includes("modify")
-  ) {
-    tags.push("Action");
-  } else {
-    tags.push("General");
+    return "Compare";
   }
 
-  // Add content-specific tags based on keywords
+  // Explanation queries
+  if (
+    message.includes("explain") ||
+    message.includes("why") ||
+    message.includes("tell me about")
+  ) {
+    return "Explain";
+  }
+
+  // Action queries
+  if (
+    message.includes("create") ||
+    message.includes("add") ||
+    message.includes("update") ||
+    message.includes("delete")
+  ) {
+    return "Action";
+  }
+
+  return null;
+}
+
+// Helper function to determine content type (only used as fallback)
+function determineContentType(message: string): string | null {
   if (
     message.includes("artist") ||
     message.includes("artwork") ||
     message.includes("painting") ||
     message.includes("sculpture")
   ) {
-    tags.push("Art");
-  } else if (
+    return "Art";
+  }
+
+  if (
     message.includes("document") ||
     message.includes("paper") ||
     message.includes("text") ||
     message.includes("file")
   ) {
-    tags.push("Documents");
-  } else if (
-    message.includes("data") ||
-    message.includes("database") ||
-    message.includes("collection")
-  ) {
-    tags.push("Data");
-  } else if (
-    message.includes("algorithm") ||
-    message.includes("machine learning") ||
-    message.includes("ai") ||
-    message.includes("neural")
-  ) {
-    tags.push("AI/ML");
-  } else if (
-    message.includes("api") ||
-    message.includes("code") ||
-    message.includes("programming") ||
-    message.includes("development")
-  ) {
-    tags.push("Technical");
+    return "Documents";
   }
 
-  // Limit to 2 tags maximum, prioritize most specific ones
-  return tags.slice(0, 2);
+  if (
+    message.includes("image") ||
+    message.includes("photo") ||
+    message.includes("picture")
+  ) {
+    return "Images";
+  }
+
+  if (
+    message.includes("api") ||
+    message.includes("code") ||
+    message.includes("programming")
+  ) {
+    return "Technical";
+  }
+
+  return null;
 }
 
 // Simple title extraction function
