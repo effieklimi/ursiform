@@ -36,7 +36,7 @@ export GEMINI_API_KEY="your-global-gemini-key"
 
 **⚠️ Important**: Once set in your shell, these **cannot be overridden** by any `.env` files.
 
-**Project-Specific Keys**: If you need different keys per project, **do not** set them in your shell. Instead set the following in your `.env` or `.env.local`
+**Project-Specific Keys**: If you need different keys per project, **do not** set them in your shell. Instead set the following in your `.env` or `.env.local`:
 
 ```bash
 OPENAI_API_KEY=<your-openai-key>
