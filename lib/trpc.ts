@@ -4,7 +4,7 @@ import type { CreateNextContextOptions } from "@trpc/server/adapters/next";
 import { prisma } from "./prisma";
 
 /**
- * Create context for tRPC requests
+ * Create context for tRPC requests (Pages API)
  * This is where you can add authentication, user info, etc.
  */
 export const createTRPCContext = async (opts: CreateNextContextOptions) => {
@@ -17,12 +17,23 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
   };
 };
 
+/**
+ * Create context for tRPC requests (App Directory)
+ */
+export const createTRPCContextApp = async (req: Request) => {
+  return {
+    req,
+    prisma,
+  };
+};
+
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
+export type ContextApp = Awaited<ReturnType<typeof createTRPCContextApp>>;
 
 /**
  * Initialize tRPC
  */
-const t = initTRPC.context<Context>().create({
+const t = initTRPC.context<Context | ContextApp>().create({
   transformer: superjson,
   errorFormatter({ shape }) {
     return shape;

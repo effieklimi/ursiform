@@ -188,3 +188,47 @@ MIT License - see LICENSE file for details.
 ---
 
 **Built with ❤️ in London.**
+
+## TRPC Setup (App Directory)
+
+This project uses TRPC with Next.js App Directory (not Pages directory). The TRPC setup includes:
+
+### Server Setup
+
+- **Route Handler**: `app/api/trpc/[trpc]/route.ts` - Handles all TRPC requests using the fetch adapter
+- **Context**: `lib/trpc.ts` - Provides both Pages and App directory context functions
+- **Routers**: `lib/routers/` - Contains all TRPC procedure definitions
+
+### Client Setup
+
+- **Provider**: `components/providers/trpc-provider.tsx` - TRPC React Query provider
+- **Layout**: App directory layout automatically includes the TRPC provider
+
+### Testing TRPC
+
+1. Start the development server: `npm run dev`
+2. Visit `/test-trpc` to test the TRPC integration
+3. Or run the test script: `node test-trpc-endpoint.js`
+
+### Migration from Pages Directory
+
+The TRPC setup has been migrated from Pages directory (`pages/api/trpc/`) to App directory (`app/api/trpc/[trpc]/`). The old pages directory handlers have been removed.
+
+### Available Procedures
+
+- `chat.getAll` - Get all chats
+- `chat.getById({ id })` - Get specific chat with messages
+- `chat.create({ title? })` - Create new chat
+- `chat.updateTitle({ id, title })` - Update chat title
+- `chat.delete({ id })` - Delete chat
+- `chat.getCount` - Get total chat count
+- `message.*` - Message-related procedures
+
+## Requirements
+
+- Node.js >= 18.18.0 (Next.js 15 requirement)
+- npm or yarn
+
+## Getting Started
+
+// ... existing code ...
