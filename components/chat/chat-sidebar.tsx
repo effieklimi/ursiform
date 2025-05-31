@@ -269,7 +269,7 @@ export function ChatSidebar({
         </details>
 
         {/* Debug Panel - Only show when there's context */}
-        {(conversationContext.lastEntity ||
+        {/* {(conversationContext.lastEntity ||
           conversationContext.lastCollection ||
           conversationContext.conversationHistory.length > 0) && (
           <details className="group border-t">
@@ -309,7 +309,7 @@ export function ChatSidebar({
               </div>
             </div>
           </details>
-        )}
+        )} */}
       </div>
     </div>
   );
