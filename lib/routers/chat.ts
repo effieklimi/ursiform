@@ -97,87 +97,95 @@ function extractTitleFromMessage(message: string): string {
   // Clean the message
   let title = message.trim();
 
-  // Handle different question patterns more intelligently
+  // Remove trailing question marks but keep the sentence structure
+  title = title.replace(/\?+$/, "");
+
+  // Handle different question patterns to create natural sentences
   if (title.toLowerCase().startsWith("what")) {
-    // For "What" questions, try to preserve some structure
-    title = title.replace(
-      /^what\s+(is|are|do|does|did|can|could|should|would|will)\s*/i,
-      ""
-    );
+    // For "What" questions, keep natural structure
+    title = title.replace(/^what\s+(is|are)\s+the\s+/i, "The ");
+    title = title.replace(/^what\s+(is|are)\s+/i, "");
     title = title.replace(/^what\s+/i, "");
-  } else if (title.toLowerCase().startsWith("how")) {
-    // For "How" questions, preserve the "how" context
+  } else if (title.toLowerCase().startsWith("how many")) {
+    // Convert "How many X do they have" to "How Many X"
     title = title.replace(
-      /^how\s+(do|does|did|can|could|should|would|will|to)\s*/i,
-      "How to "
+      /^how\s+many\s+(.+?)\s+(do|does|did|can|could|should|would|will)\s+.*/i,
+      "How Many $1"
     );
-    title = title.replace(/^how\s+many\s*/i, "Count of ");
-    title = title.replace(/^how\s+much\s*/i, "Amount of ");
-    title = title.replace(/^how\s+/i, "How to ");
+    title = title.replace(/^how\s+many\s+/i, "How Many ");
+  } else if (title.toLowerCase().startsWith("how much")) {
+    title = title.replace(
+      /^how\s+much\s+(.+?)\s+(do|does|did|can|could|should|would|will)\s+.*/i,
+      "How Much $1"
+    );
+    title = title.replace(/^how\s+much\s+/i, "How Much ");
+  } else if (title.toLowerCase().startsWith("how")) {
+    // For other "How" questions, preserve the structure better
+    title = title.replace(
+      /^how\s+(do|does|did|can|could|should|would|will)\s+/i,
+      "How "
+    );
+    title = title.replace(/^how\s+to\s+/i, "How to ");
+    title = title.replace(/^how\s+/i, "How ");
   } else if (title.toLowerCase().startsWith("why")) {
     title = title.replace(
-      /^why\s+(do|does|did|is|are|can|could|should|would|will)\s*/i,
+      /^why\s+(do|does|did|is|are|can|could|should|would|will)\s+/i,
       "Why "
     );
     title = title.replace(/^why\s+/i, "Why ");
   } else if (title.toLowerCase().startsWith("when")) {
     title = title.replace(
-      /^when\s+(do|does|did|is|are|can|could|should|would|will)\s*/i,
+      /^when\s+(do|does|did|is|are|was|were|can|could|should|would|will)\s+/i,
       "When "
     );
     title = title.replace(/^when\s+/i, "When ");
   } else if (title.toLowerCase().startsWith("where")) {
     title = title.replace(
-      /^where\s+(do|does|did|is|are|can|could|should|would|will)\s*/i,
+      /^where\s+(do|does|did|is|are|can|could|should|would|will|can i|could i)\s+/i,
       "Where "
     );
     title = title.replace(/^where\s+/i, "Where ");
   } else if (title.toLowerCase().startsWith("who")) {
     title = title.replace(
-      /^who\s+(is|are|was|were|can|could|should|would|will)\s*/i,
+      /^who\s+(is|are|was|were|can|could|should|would|will)\s+/i,
       "Who "
     );
     title = title.replace(/^who\s+/i, "Who ");
   } else {
-    // For other patterns, remove common starters but preserve some structure
+    // For other patterns, clean up but preserve sentence structure
     title = title.replace(
-      /^(show me|tell me|find|search|get|give me|can you|could you|please)\s+/i,
+      /^(show me|tell me|can you show me|can you tell me)\s+/i,
       ""
     );
+    title = title.replace(/^(find|search|get|give me)\s+/i, "");
+    title = title.replace(/^(can you|could you|please)\s+/i, "");
   }
-
-  // Remove trailing question marks
-  title = title.replace(/\?+$/, "");
 
   // Clean up extra spaces
   title = title.replace(/\s+/g, " ").trim();
 
-  // Split into words
+  // Split into words for processing
   const words = title.split(/\s+/);
 
-  // Keep more connecting words for better flow, but filter out very common ones
-  const wordsToFilter = ["the", "and", "of", "to", "in", "for", "with", "by"];
+  // Only filter out articles and very common words, but keep sentence structure words
+  const wordsToFilter = ["the", "a", "an"];
   const filteredWords = words.filter((word) => {
-    if (
-      word.length <= 2 &&
-      !["AI", "ML", "UI", "UX", "IT"].includes(word.toUpperCase())
-    ) {
-      return false;
-    }
+    // Keep most words for natural sentences, only filter out articles
+    if (word.length <= 1) return false;
     return !wordsToFilter.includes(word.toLowerCase());
   });
 
-  // Take up to 6-7 words for better readability (increased from 5)
-  const titleWords = filteredWords.slice(0, 7);
+  // Take up to 8 words for complete sentences
+  const titleWords = filteredWords.slice(0, 8);
 
-  // Smart capitalization - preserve proper nouns and important words
+  // Smart capitalization for natural sentences
   const capitalizedWords = titleWords.map((word, index) => {
     // Always capitalize first word
     if (index === 0) {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     }
 
-    // Keep existing capitalization for likely proper nouns and acronyms
+    // Keep existing capitalization for likely proper nouns
     if (word.charAt(0) === word.charAt(0).toUpperCase() && word.length > 2) {
       return word;
     }
@@ -195,12 +203,15 @@ function extractTitleFromMessage(message: string): string {
       "CSS",
       "HTML",
       "JS",
+      "SQL",
+      "JSON",
+      "XML",
     ];
     if (acronyms.includes(word.toUpperCase())) {
       return word.toUpperCase();
     }
 
-    // Capitalize important words
+    // Capitalize important words in titles
     const importantWords = [
       "how",
       "what",
@@ -208,17 +219,26 @@ function extractTitleFromMessage(message: string): string {
       "when",
       "where",
       "who",
-      "count",
-      "amount",
+      "many",
+      "much",
+      "work",
+      "works",
+      "database",
+      "collection",
+      "collections",
     ];
     if (importantWords.includes(word.toLowerCase())) {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     }
 
-    // Keep lowercase for small connecting words that we didn't filter
+    // Keep lowercase for small words but preserve natural sentence flow
     const keepLowercase = [
-      "a",
-      "an",
+      "of",
+      "to",
+      "in",
+      "for",
+      "with",
+      "by",
       "at",
       "on",
       "up",
@@ -241,32 +261,46 @@ function extractTitleFromMessage(message: string): string {
       "have",
       "has",
       "had",
+      "and",
+      "but",
+      "from",
+      "that",
+      "this",
+      "they",
+      "them",
+      "their",
     ];
     if (keepLowercase.includes(word.toLowerCase())) {
       return word.toLowerCase();
     }
 
-    // Default to title case
+    // Default to title case for main words
     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
   });
 
   let result = capitalizedWords.join(" ");
 
-  // Increase length limit for better readability
-  if (result.length > 50) {
-    result = result.substring(0, 47) + "...";
+  // Ensure reasonable length but allow for complete sentences
+  if (result.length > 60) {
+    result = result.substring(0, 57) + "...";
   }
 
-  // Better fallback if result is too short or empty
+  // Better fallback if result is too short
   if (result.length < 3) {
-    // Take first few words without heavy filtering
-    const firstWords = message.split(" ").slice(0, 4);
+    // Take first few words and make them into a proper title
+    const firstWords = message.split(" ").slice(0, 5);
     result = firstWords
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
+      .map((word, index) => {
+        if (index === 0) {
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(" ")
+      .replace(/\?+$/, "");
 
-    if (result.length > 45) {
-      result = result.substring(0, 42) + "...";
+    if (result.length > 55) {
+      result = result.substring(0, 52) + "...";
     }
   }
 
