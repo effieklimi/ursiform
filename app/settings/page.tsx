@@ -2,8 +2,8 @@ import { SettingsPage } from "@/components/settings-page";
 import { SideNavigation } from "@/components/side-navigation";
 
 export const metadata = {
-  title: "Settings - Yearn",
-  description: "Configure your Yearn application settings",
+  title: "Settings - Ursiform",
+  description: "Configure your Ursiform application settings",
 };
 
 export default function Settings() {

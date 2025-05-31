@@ -528,7 +528,7 @@ export function SettingsPage() {
                 </div>
                 <div className="flex gap-3 text-xs">
                   <Link
-                    href="https://github.com/effieklimi/yearn"
+                    href="https://github.com/effieklimi/ursiform"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-foreground transition-colors"

@@ -1,4 +1,4 @@
-# Yearn
+# Ursiform
 
 A natural language interface for vector databases. Works on the browser. Query your data in plain English and get context-aware, conversational answers.
 
@@ -94,8 +94,8 @@ DESCRIPTION_FIELD=abstract
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/effieklimi/yearn.git
-   cd yearn
+   git clone https://github.com/effieklimi/ursiform.git
+   cd ursiform
    ```
 
 2. **Install dependencies**

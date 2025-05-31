@@ -1,5 +1,5 @@
 {
-  "name": "yearn",
+  "name": "ursiform",
   "version": "1.0.0",
   "description": "Natural language interface for Qdrant vector databases",
   "license": "MIT",
@@ -9,8 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "docker:build": "docker build -t yearn .",
-    "docker:run": "docker run -p 3000:3000 yearn",
+    "docker:build": "docker build -t ursiform .",
+    "docker:run": "docker run -p 3000:3000 ursiform",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "db:generate": "prisma generate",
