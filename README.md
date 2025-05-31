@@ -1,4 +1,4 @@
-# <picture><source media="(prefers-color-scheme: dark)" srcset="public/ursiform.svg" style="filter: invert(1);"><source media="(prefers-color-scheme: light)" srcset="public/ursiform.svg"><img src="public/ursiform.svg" alt="Ursiform" width="28" height="28" style="display: inline-block; vertical-align: middle; margin-right: 8px;"></picture> Ursiform
+# <img src="public/ursiform.svg" alt="Ursiform" width="28" height="28" style="display: inline-block; vertical-align: middle; margin-right: 8px; filter: brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(1) contrast(1);" /> Ursiform
 
 A natural language interface for vector databases. Works on the browser. Query your data in plain English and get context-aware, conversational answers.
 
