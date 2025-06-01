@@ -43,14 +43,19 @@ global.console = {
 
 // Clean up after each test
 afterEach(() => {
-  jest.clearAllMocks();
+  // Clear config cache if it exists
+  if (global.__ursiform_config_cache__) {
+    delete global.__ursiform_config_cache__;
+  }
 
-  // Clear config cache
-  delete global.__ursiform_config_cache__;
-
-  // Clear any module cache for config
-  jest.resetModules();
-
-  // Clear timers
+  // Clear timers but not mocks (Jest handles mocks with clearMocks: true)
   jest.clearAllTimers();
+});
+
+// Clean up before each test
+beforeEach(() => {
+  // Reset environment to known state
+  process.env.QDRANT_URL = "http://localhost:6333";
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  process.env.GEMINI_API_KEY = "test-gemini-key";
 });

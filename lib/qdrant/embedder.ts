@@ -7,6 +7,12 @@ import type { EmbeddingProvider } from "../schemas";
 let openaiInstance: OpenAI | null = null;
 let geminiInstance: GoogleGenAI | null = null;
 
+// Reset function for testing
+export function resetClients(): void {
+  openaiInstance = null;
+  geminiInstance = null;
+}
+
 function getOpenAIClient(): OpenAI {
   if (!openaiInstance) {
     const config = getConfig();
@@ -91,6 +97,6 @@ export async function embed(
     }
   } catch (error) {
     console.error(`Error generating embedding with ${provider}:`, error);
-    throw new Error("Failed to generate embedding");
+    throw error;
   }
 }

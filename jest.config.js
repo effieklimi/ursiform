@@ -26,6 +26,7 @@ const customJestConfig = {
   forceExit: true,
   testTimeout: 30000,
   // Transform configuration for TypeScript
+  preset: "ts-jest",
   transform: {
     "^.+\\.(ts|tsx)$": [
       "ts-jest",
@@ -34,9 +35,12 @@ const customJestConfig = {
       },
     ],
   },
-  moduleNameMapping: {
+  moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
+  // Clear mocks between tests
+  clearMocks: true,
+  restoreMocks: true,
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

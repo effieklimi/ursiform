@@ -12,6 +12,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:run": "node scripts/test-runner.js",
+    "test:run-lite": "npx jest tests/backend/simple.test.ts",
+    "test:run-working": "npx jest tests/backend/config.test.ts tests/backend/simple.test.ts",
     "test:run-coverage": "node scripts/test-runner.js --coverage",
     "test:run-watch": "node scripts/test-runner.js --watch",
     "test:config": "node scripts/test-runner.js --suite=config",
