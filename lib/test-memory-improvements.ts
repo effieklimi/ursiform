@@ -59,9 +59,22 @@ async function testMemoryImprovements() {
       console.log(`✅ Success (${duration}ms)`);
       console.log(`Answer: ${result.answer.substring(0, 100)}...`);
       console.log(`Query type: ${result.query_type}`);
-      console.log(
-        `Data count: ${result.data?.count || result.data?.total_count || "N/A"}`
-      );
+      // Handle different result types properly
+      let recordCount = "N/A";
+      if (result.data) {
+        if ('count' in result.data) {
+          recordCount = String(result.data.count);
+        } else if ('total_vectors_count' in result.data) {
+          recordCount = String(result.data.total_vectors_count);
+        } else if ('total_count' in result.data) {
+          recordCount = String(result.data.total_count);
+        } else if ('items' in result.data && Array.isArray(result.data.items)) {
+          recordCount = String(result.data.items.length);
+        } else if ('entities' in result.data && Array.isArray(result.data.entities)) {
+          recordCount = String(result.data.entities.length);
+        }
+      }
+      console.log(`Data count: ${recordCount}`);
 
       if (result.pagination) {
         console.log(

@@ -70,11 +70,22 @@ async function testUnlimitedAccess() {
 
       console.log(`✅ Completed in ${duration}ms`);
       console.log(`Answer: ${result.answer.substring(0, 150)}...`);
-      console.log(
-        `Records found: ${
-          result.data?.count || result.data?.total_count || "N/A"
-        }`
-      );
+      // Handle different result types properly
+      let recordCount = "N/A";
+      if (result.data) {
+        if ('count' in result.data) {
+          recordCount = String(result.data.count);
+        } else if ('total_vectors_count' in result.data) {
+          recordCount = String(result.data.total_vectors_count);
+        } else if ('total_count' in result.data) {
+          recordCount = String(result.data.total_count);
+        } else if ('items' in result.data && Array.isArray(result.data.items)) {
+          recordCount = String(result.data.items.length);
+        } else if ('entities' in result.data && Array.isArray(result.data.entities)) {
+          recordCount = String(result.data.entities.length);
+        }
+      }
+      console.log(`Records found: ${recordCount}`);
       console.log(`Memory used: ${(memoryDiff / 1024 / 1024).toFixed(2)}MB`);
 
       if (result.pagination) {
