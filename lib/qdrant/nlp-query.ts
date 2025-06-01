@@ -1,8 +1,22 @@
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import { client } from "./db";
-import { EmbeddingProvider } from "../schemas";
-import { ConversationContext, ConversationTurn } from "../types";
+import {
+  EmbeddingProvider,
+  VectorPayload,
+  FilterCondition,
+  QueryIntent,
+  ConversationContext,
+  ConversationTurn,
+} from "../schemas";
+import {
+  validatePayload,
+  validateQueryIntent,
+  validateConversationContext,
+  ValidationError as CustomValidationError,
+  isValidQdrantPoint,
+  isValidLLMResponse,
+} from "../validation";
 import { getConfig, hasProvider } from "../config";
 import {
   QueryParsingError,
@@ -25,6 +39,16 @@ import {
   DEFAULT_PROCESSING_CONFIG,
   SAFE_PROCESSING_CONFIG,
 } from "../pagination";
+
+// Import strongly typed database interfaces
+import type {
+  DatabaseConfig,
+  QueryResult,
+  VectorSearchResult,
+  QdrantPoint,
+  QdrantScrollResult,
+  QdrantFilter,
+} from "../types/database";
 
 // Lazy initialization of AI clients using config system
 let openaiInstance: OpenAI | null = null;
@@ -60,18 +84,6 @@ function getGeminiClient(): GoogleGenAI {
   return geminiInstance;
 }
 
-// Configuration for different database schemas
-interface DatabaseConfig {
-  entityField: string; // Field that contains the main entity identifier (e.g., "name", "author", "creator")
-  entityType: string; // What to call the entities (e.g., "artists", "authors", "creators", "entities")
-  itemType: string; // What to call individual items (e.g., "images", "documents", "items", "records")
-  additionalFields?: {
-    filename?: string; // Field for file names
-    url?: string; // Field for URLs
-    description?: string; // Field for descriptions
-  };
-}
-
 // Default configuration - can be overridden via environment variables or config
 const DEFAULT_CONFIG: DatabaseConfig = {
   entityField: process.env.ENTITY_FIELD || "name",
@@ -86,40 +98,119 @@ const DEFAULT_CONFIG: DatabaseConfig = {
 
 // Helper function to get entity value from a point
 function getEntityValue(
-  point: any,
+  point: QdrantPoint,
   config: DatabaseConfig = DEFAULT_CONFIG
 ): string | null {
-  return point.payload?.[config.entityField] || null;
+  if (!point.payload) return null;
+  const value = point.payload[config.entityField];
+  return typeof value === "string" ? value : null;
 }
 
 // Helper function to get additional field values
-function getFieldValue(point: any, fieldName: string): string | null {
-  return point.payload?.[fieldName] || null;
+function getFieldValue(point: QdrantPoint, fieldName: string): string | null {
+  if (!point.payload) return null;
+  const value = point.payload[fieldName];
+  return typeof value === "string" ? value : null;
 }
 
-interface QueryIntent {
-  type:
-    | "count"
-    | "search"
-    | "list"
-    | "filter"
-    | "describe"
-    | "collections"
-    | "database"
-    | "summarize"
-    | "analyze"
-    | "top"
-    | "ranking"
-    | "aggregate"; // Add new query types for complex queries
-  target: string; // what to count/search/list
-  filter?: any; // any filters to apply
-  limit?: number;
-  scope: "collection" | "database"; // new: scope of the query
-  extractedCollection?: string; // new: collection name extracted from query text
-  sortBy?: string; // new: what to sort by (e.g., "image_count", "popularity")
-  sortOrder?: "asc" | "desc"; // new: sort order
-  aggregationFunction?: "sum" | "average" | "min" | "max"; // For type "aggregate"
-  aggregationField?: string; // For type "aggregate"
+// Helper function to extract entity value from filter array
+function getEntityFromFilter(
+  filter: FilterCondition[] | undefined,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): string | null {
+  if (!filter || !Array.isArray(filter)) return null;
+
+  const entityCondition = filter.find(
+    (condition) => condition.field === config.entityField
+  );
+
+  return entityCondition && typeof entityCondition.value === "string"
+    ? entityCondition.value
+    : null;
+}
+
+// Helper function to check if filter has entity field
+function hasEntityFilter(
+  filter: FilterCondition[] | undefined,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): boolean {
+  return getEntityFromFilter(filter, config) !== null;
+}
+
+// Helper function to get a specific field value from filter
+function getFilterValue(
+  filter: FilterCondition[] | undefined,
+  fieldName: string
+): string | number | boolean | string[] | number[] | null {
+  if (!filter || !Array.isArray(filter)) return null;
+
+  const condition = filter.find((c) => c.field === fieldName);
+  return condition ? condition.value : null;
+}
+
+// Helper function to create proper filter conditions
+function createEntityFilter(
+  entityName: string,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): FilterCondition[] {
+  return [
+    {
+      field: config.entityField,
+      operator: "equals",
+      value: entityName,
+    },
+  ];
+}
+
+// Helper function to convert old filter format to new format if needed
+function normalizeFilter(
+  filter: any,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): FilterCondition[] | undefined {
+  if (!filter) return undefined;
+
+  // If it's already the new format (array of FilterCondition)
+  if (Array.isArray(filter)) {
+    return filter;
+  }
+
+  // If it's the old format (object with properties)
+  if (typeof filter === "object") {
+    const conditions: FilterCondition[] = [];
+
+    // Handle old format like { name: "Artist Name" }
+    if (filter.name) {
+      conditions.push({
+        field: config.entityField,
+        operator: "equals",
+        value: filter.name,
+      });
+    }
+
+    // Handle direct entity field access like { [config.entityField]: "value" }
+    if (filter[config.entityField]) {
+      conditions.push({
+        field: config.entityField,
+        operator: "equals",
+        value: filter[config.entityField],
+      });
+    }
+
+    // Handle other properties
+    Object.entries(filter).forEach(([key, value]) => {
+      if (key !== "name" && key !== config.entityField && value !== undefined) {
+        conditions.push({
+          field: key,
+          operator: "equals",
+          value: value as string | number | boolean | string[] | number[],
+        });
+      }
+    });
+
+    return conditions.length > 0 ? conditions : undefined;
+  }
+
+  return undefined;
 }
 
 export async function processNaturalQuery(
@@ -133,7 +224,7 @@ export async function processNaturalQuery(
 ): Promise<{
   answer: string;
   query_type: string;
-  data?: any;
+  data?: QueryResult;
   execution_time_ms: number;
   context: ConversationContext; // Return updated context
   pagination?: {
@@ -148,17 +239,11 @@ export async function processNaturalQuery(
   try {
     // Validate input
     if (!question || question.trim().length === 0) {
-      throw new ValidationError(
-        "question",
-        question,
-        "Question cannot be empty"
-      );
+      throw new CustomValidationError("Question cannot be empty");
     }
 
     if (question.length > 10000) {
-      throw new ValidationError(
-        "question",
-        question.length,
+      throw new CustomValidationError(
         "Question too long (max 10,000 characters)"
       );
     }
@@ -173,7 +258,7 @@ export async function processNaturalQuery(
       await resolveContext(question, collection, context);
 
     // Step 2: Parse intent with context awareness
-    let intent;
+    let intent: QueryIntent;
     try {
       intent = await parseQueryIntent(
         enrichedQuestion,
@@ -199,7 +284,7 @@ export async function processNaturalQuery(
       resolvedCollection || intent.extractedCollection || null;
 
     // Step 4: Execute the appropriate operation with pagination support and processing config
-    let result;
+    let result: QueryResult;
     try {
       result = await executeQuery(
         finalCollection,
@@ -225,7 +310,7 @@ export async function processNaturalQuery(
     }
 
     // Step 5: Generate natural language response
-    let answer;
+    let answer: string;
     try {
       answer = await generateResponse(
         enrichedQuestion,
@@ -253,11 +338,11 @@ export async function processNaturalQuery(
 
     // Prepare pagination info if applicable
     const paginationInfo =
-      result?.hasMore !== undefined
+      "hasMore" in result && result.hasMore !== undefined
         ? {
             hasMore: result.hasMore,
-            nextOffset: result.nextOffset,
-            totalCount: result.totalCount,
+            nextOffset: "nextOffset" in result ? result.nextOffset : undefined,
+            totalCount: "totalCount" in result ? result.totalCount : undefined,
             limit: validatedPagination?.limit || 20,
           }
         : undefined;
@@ -274,7 +359,7 @@ export async function processNaturalQuery(
       queryType: intent.type,
       collection: finalCollection || undefined,
       duration: execution_time_ms,
-      recordsProcessed: result?.count || 0,
+      recordsProcessed: "count" in result ? result.count || 0 : 0,
       memoryEfficient: true,
       processingMode: processingMode,
     });
@@ -460,8 +545,9 @@ async function resolveContext(
 
     // If the last query returned collection-specific results, use that collection
     if (lastTurn.result?.results_by_collection && !resolvedCollection) {
-      const collectionsWithResults =
-        lastTurn.result.results_by_collection.filter((r: any) => r.count > 0);
+      const collectionsWithResults = (
+        lastTurn.result.results_by_collection as any[]
+      ).filter((r: any) => r.count > 0);
       if (collectionsWithResults.length === 1) {
         console.log(
           "🔄 Inferring collection from previous results:",
@@ -516,9 +602,10 @@ function updateConversationContext(
   };
 
   // Update last entity if filter contains a name
-  if (intent.filter?.name) {
-    updatedContext.lastEntity = intent.filter.name;
-    console.log("📝 Updated lastEntity to:", intent.filter.name);
+  const entityFromFilter = getEntityFromFilter(intent.filter, DEFAULT_CONFIG);
+  if (entityFromFilter) {
+    updatedContext.lastEntity = entityFromFilter;
+    console.log("📝 Updated lastEntity to:", entityFromFilter);
   }
 
   // Update last collection
@@ -534,8 +621,8 @@ function updateConversationContext(
   console.log("📝 Updated lastTarget to:", intent.target);
 
   // Update current topic based on query content
-  if (intent.filter?.name) {
-    updatedContext.currentTopic = `${intent.filter.name} ${intent.target}`;
+  if (entityFromFilter) {
+    updatedContext.currentTopic = `${entityFromFilter} ${intent.target}`;
     console.log("📝 Updated currentTopic to:", updatedContext.currentTopic);
   }
 
@@ -906,7 +993,7 @@ function inferIntentFromQuestion(
       return {
         type: "ranking",
         target: "entities",
-        filter: null,
+        filter: undefined,
         limit: 1,
         scope,
         sortBy: "image_count",
@@ -919,7 +1006,7 @@ function inferIntentFromQuestion(
       return {
         type: "ranking",
         target: "entities",
-        filter: null,
+        filter: undefined,
         limit: 1,
         scope,
         sortBy: "image_count",
@@ -939,7 +1026,7 @@ function inferIntentFromQuestion(
       return {
         type: "top",
         target: "entities",
-        filter: null,
+        filter: undefined,
         limit,
         scope,
         sortBy: "image_count",
@@ -1004,7 +1091,13 @@ function inferIntentFromQuestion(
 
   // PRIORITY 5: Entity-specific queries (high priority after database queries)
   if (entityName) {
-    const filter = { name: entityName };
+    const filter = [
+      {
+        field: "name",
+        operator: "equals" as const,
+        value: entityName,
+      },
+    ];
     const scope = targetCollection ? "collection" : "database";
 
     if (
@@ -1134,7 +1227,7 @@ function inferIntentFromQuestion(
       return {
         type: "search",
         target: "items",
-        filter: { name: fallbackEntityMatch[1] },
+        filter: createEntityFilter(fallbackEntityMatch[1], DEFAULT_CONFIG),
         limit: 10,
         scope,
         ...(extractedCollection && { extractedCollection }),
@@ -1295,14 +1388,14 @@ async function executeDatabaseQuery(
       if (
         (intent.target === config.itemType || intent.target === "items") && // User asking for specific item type like "images" or generic "items"
         intent.target !== "total" && // Differentiate from purely "total" vectors
-        !(intent.filter && intent.filter[config.entityField]) // Not an entity-specific item count
+        !hasEntityFilter(intent.filter, config) // Not an entity-specific item count
       ) {
         // Pass the specific item type (e.g., "images" or actual config.itemType if intent.target is "items")
         const targetItemType =
           intent.target === "items" ? config.itemType : intent.target;
         return await countTotalItemsAcrossDatabase(config, targetItemType);
       }
-      if (intent.filter && intent.filter[config.entityField]) {
+      if (hasEntityFilter(intent.filter, config)) {
         // This is for counting items BY a specific entity, should remain separate
         return await countItemsByEntityAcrossDatabase(intent.filter, config);
       }
@@ -1322,7 +1415,7 @@ async function executeDatabaseQuery(
       return await describeDatabaseInfo(); // This function internally uses listCollections which is somewhat generic
 
     case "search":
-      if (intent.filter && intent.filter[config.entityField]) {
+      if (hasEntityFilter(intent.filter, config)) {
         // searchAcrossCollections needs to be updated to use searchItems and config
         return await searchAcrossCollections(
           intent.filter,
@@ -1334,7 +1427,7 @@ async function executeDatabaseQuery(
       break;
 
     case "summarize":
-      if (intent.filter && intent.filter[config.entityField]) {
+      if (hasEntityFilter(intent.filter, config)) {
         return await summarizeEntityAcrossDatabase(
           intent.filter,
           intent.limit || 20,
@@ -1485,8 +1578,11 @@ async function executeCollectionQuery(
       } else if (
         (intent.target === config.itemType || intent.target === "items") &&
         intent.filter &&
-        intent.filter[config.entityField]
+        isEntityFilterPresent(intent.filter, config)
       ) {
+        const entityName =
+          getEntityNameFromFilter(intent.filter) ||
+          getEntityFromFilter(intent.filter as FilterCondition[], config);
         return await countItemsByEntity(collection, intent.filter, config);
       } else {
         // Default to counting total items in the collection
@@ -1537,7 +1633,8 @@ async function executeCollectionQuery(
       );
 
     case "summarize":
-      if (intent.filter && intent.filter[config.entityField]) {
+      if (getEntityNameFromFilter(intent.filter)) {
+        const entityName = getEntityNameFromFilter(intent.filter);
         return await summarizeEntityWork(
           collection,
           intent.filter,
@@ -1549,7 +1646,8 @@ async function executeCollectionQuery(
       break;
 
     case "analyze":
-      if (intent.filter && intent.filter[config.entityField]) {
+      if (getEntityNameFromFilter(intent.filter)) {
+        const entityName = getEntityNameFromFilter(intent.filter);
         return await analyzeEntityWork(
           collection,
           intent.filter,
@@ -2376,12 +2474,13 @@ function generateFallbackResponse(
           }
           return summaryMessage;
         }
-        if (intent.filter && intent.filter[config.entityField]) {
+        if (isEntityFilterPresent(intent.filter, config)) {
+          const entityName =
+            getEntityNameFromFilter(intent.filter) ||
+            getEntityFromFilter(intent.filter as FilterCondition[], config);
           return `I found ${safeData.count || 0} ${
             config.itemType + pluralize(safeData.count || 0)
-          } by ${
-            safeData.entity || intent.filter[config.entityField]
-          } across all collections. ${
+          } by ${safeData.entity || entityName} across all collections. ${
             safeData.by_collection?.length > 0
               ? `Found in: ${safeData.by_collection
                   .map((c: any) => `${c.collection} (${c.count})`)
@@ -2410,10 +2509,11 @@ function generateFallbackResponse(
           safeData.collections_searched || 0
         } collections and found ${safeData.total_count || 0} matching items.`; // Assuming items is generic enough here
       case "summarize":
-        if (intent.filter?.name) {
+        if (getEntityNameFromFilter(intent.filter)) {
+          const entityName = getEntityNameFromFilter(intent.filter);
           return (
             `Summary of ${
-              safeData.entity || intent.filter.name
+              safeData.entity || entityName
             }'s work across the database:\n\n` +
             `Total Items: ${safeData.total_items || 0}\n` +
             `Collections: Found in ${
@@ -2476,12 +2576,13 @@ function generateFallbackResponse(
           safeData.entities?.slice(0, 5).join(", ") ||
           `No ${config.entityType + pluralize(0)} found`
         }.`;
-      } else if (intent.filter && intent.filter[config.entityField]) {
+      } else if (isEntityFilterPresent(intent.filter, config)) {
+        const entityName =
+          getEntityNameFromFilter(intent.filter) ||
+          getEntityFromFilter(intent.filter as FilterCondition[], config);
         return `I found ${safeData.count || 0} ${
           config.itemType + pluralize(safeData.count || 0)
-        } by ${
-          safeData.entity || intent.filter[config.entityField]
-        } in this collection.${
+        } by ${safeData.entity || entityName} in this collection.${
           safeData.sample_items?.length > 0
             ? ` Sample files: ${safeData.sample_items
                 .slice(0, 3)
@@ -2551,12 +2652,13 @@ function generateFallbackResponse(
       } matching your criteria.`;
 
     case "summarize":
-      if (intent.filter?.name) {
+      if (getEntityNameFromFilter(intent.filter)) {
+        const entityName = getEntityNameFromFilter(intent.filter);
         // ... (summary for entity in collection - assuming itemType is implicitly items/images based on context)
         // This part is harder to make fully generic with pluralize without more context from data structure
         return (
           `Summary of ${
-            safeData.entity || intent.filter.name
+            safeData.entity || entityName
           }'s work in this collection:\n\n` +
           `Total Items: ${safeData.total_items || 0}\n` +
           `File Types: ${safeData.file_types?.join(", ") || "Various"}\n` +
@@ -2577,11 +2679,12 @@ function generateFallbackResponse(
       break;
 
     case "analyze":
-      if (intent.filter?.name) {
+      if (getEntityNameFromFilter(intent.filter)) {
+        const entityName = getEntityNameFromFilter(intent.filter);
         // Similar to summarize, uses artist/image specific terms from data structure
         return (
           `Analysis of ${
-            safeData.artist || intent.filter.name // artist might be hardcoded in data structure
+            safeData.artist || entityName // artist might be hardcoded in data structure
           }'s work patterns:\n\n` +
           `Total Images: ${safeData.total_images || 0}\n` +
           `File Types: ${
@@ -2592,7 +2695,7 @@ function generateFallbackResponse(
           `Common Patterns: ${
             Object.entries(safeData.common_naming_patterns || {})
               .slice(0, 3)
-              .map(([pattern, count]) => `\"${pattern}\" (${count} files)`)
+              .map(([pattern, count]) => `"${pattern}" (${count} files)`)
               .join(", ") || "No patterns found"
           }\n` +
           `Source Domains: ${
@@ -3662,4 +3765,41 @@ async function getTopEntitiesByItemCountInCollection(
     total_items: result.total_images,
     average_items_per_entity: result.average_images_per_artist,
   };
+}
+
+// Helper function to safely extract entity name from filter (backward compatible)
+function getEntityNameFromFilter(filter: any): string | null {
+  if (!filter) return null;
+
+  // Handle new format (FilterCondition[])
+  if (Array.isArray(filter)) {
+    return getEntityFromFilter(filter, DEFAULT_CONFIG);
+  }
+
+  // Handle old format (object with .name property)
+  if (typeof filter === "object" && filter.name) {
+    return filter.name;
+  }
+
+  return null;
+}
+
+// Helper function to safely check if filter targets a specific entity field
+function isEntityFilterPresent(
+  filter: any,
+  config: DatabaseConfig = DEFAULT_CONFIG
+): boolean {
+  if (!filter) return false;
+
+  // Handle new format
+  if (Array.isArray(filter)) {
+    return hasEntityFilter(filter, config);
+  }
+
+  // Handle old format
+  if (typeof filter === "object") {
+    return !!(filter.name || filter[config.entityField]);
+  }
+
+  return false;
 }

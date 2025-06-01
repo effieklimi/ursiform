@@ -7,12 +7,13 @@ import {
   AVAILABLE_MODELS,
   ConversationContext,
 } from "../../../lib/types";
-import { EmbeddingProvider } from "../../../lib/schemas";
+import { EmbeddingProvider, NaturalQuerySchema } from "../../../lib/schemas";
 import {
   handleVectorDBError,
   generateCorrelationId,
 } from "../../../lib/error-handler";
 import { ValidationError, ConfigurationError } from "../../../lib/errors";
+import { validateUserInput } from "../../../lib/validation";
 
 export async function POST(req: NextRequest) {
   const correlationId = generateCorrelationId();
@@ -51,37 +52,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const {
-      question,
-      collection,
-      provider = "openai",
-      model,
-      context,
-    }: {
-      question: string;
-      collection?: string;
-      provider?: EmbeddingProvider;
-      model?: string;
-      context?: ConversationContext;
-    } = body as NaturalQueryRequest;
+    // Basic validation using our schemas for core fields
+    const validatedCore = validateUserInput(
+      {
+        collection: body.collection,
+        question: body.question,
+        provider: body.provider,
+      },
+      NaturalQuerySchema.partial().extend({
+        collection: NaturalQuerySchema.shape.collection.optional(),
+      }),
+      "request parameters"
+    );
 
-    // Validate required fields
-    if (!question) {
-      throw new ValidationError(
-        "question",
-        question,
-        "Question is required and cannot be empty"
-      );
-    }
+    const { question, collection, provider = "openai" } = validatedCore;
 
-    // Validate provider
-    if (provider && !["openai", "gemini"].includes(provider)) {
-      throw new ValidationError(
-        "provider",
-        provider,
-        "Provider must be either 'openai' or 'gemini'"
-      );
-    }
+    // Extract additional fields with basic validation
+    const model = typeof body.model === "string" ? body.model : undefined;
+    const context: ConversationContext | undefined = body.context;
 
     const selectedModel = model || "gemini-2.0-flash";
     const modelInfo =
@@ -90,21 +78,22 @@ export async function POST(req: NextRequest) {
 
     const result = await processNaturalQuery(
       collection || null,
-      question,
+      question!,
       providerInfo,
       selectedModel,
-      context
+      context as any // Type assertion to handle schema mismatch
     );
 
     const response: NaturalQueryResponse = {
-      question,
       answer: result.answer,
       query_type: result.query_type,
       data: result.data,
       execution_time_ms: result.execution_time_ms,
       context: result.context,
-      correlationId, // Add correlation ID to successful responses
     };
+
+    // Add correlation ID to the response headers (not in body since interface doesn't include it)
+    headers.set("X-Correlation-ID", correlationId);
 
     return NextResponse.json(response, { status: 200, headers });
   } catch (error: any) {

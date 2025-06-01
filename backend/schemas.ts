@@ -1,9 +1,19 @@
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
+import {
+  EmbeddingProviderSchema,
+  VectorPayloadSchema,
+  FilterConditionSchema,
+  DocumentMetadataSchema,
+  QueryResultSchema,
+} from "../lib/schemas";
 
-// Embedding provider enum
-export const EmbeddingProviderSchema = z.enum(["openai", "gemini"]);
+// Re-export commonly used types for convenience
 export type EmbeddingProvider = z.infer<typeof EmbeddingProviderSchema>;
+export type VectorPayload = z.infer<typeof VectorPayloadSchema>;
+export type FilterCondition = z.infer<typeof FilterConditionSchema>;
+export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
+export type QueryResult = z.infer<typeof QueryResultSchema>;
 
 // Collection schemas
 export const CreateCollectionSchema = z.object({
@@ -21,11 +31,11 @@ export type CreateCollectionResponse = z.infer<
   typeof CreateCollectionResponseSchema
 >;
 
-// Vector schemas
+// Vector schemas - now with strongly typed payload
 export const PointSchema = z.object({
   id: z.union([z.string().uuid(), z.number().int().nonnegative()]),
   vector: z.array(z.number()),
-  payload: z.record(z.any()).optional(),
+  payload: VectorPayloadSchema.optional(),
 });
 
 export const UpsertVectorsSchema = z.object({
@@ -40,7 +50,7 @@ export const UpsertVectorsResponseSchema = z.object({
 
 export type UpsertVectorsResponse = z.infer<typeof UpsertVectorsResponseSchema>;
 
-// Document schemas (for automatic embedding generation)
+// Document schemas (for automatic embedding generation) - now with strongly typed metadata
 export const DocumentSchema = z.object({
   id: z.string().transform((val) => {
     // If it's already a UUID, keep it
@@ -55,7 +65,7 @@ export const DocumentSchema = z.object({
     return uuidv4();
   }),
   text: z.string().min(1, "Text content is required"),
-  metadata: z.record(z.any()).optional(),
+  metadata: DocumentMetadataSchema.optional(),
 });
 
 export const AddDocumentSchema = z.object({
@@ -95,20 +105,21 @@ export const AddDocumentsResponseSchema = z.object({
 
 export type AddDocumentsResponse = z.infer<typeof AddDocumentsResponseSchema>;
 
-// Translate/Search schemas
+// Translate/Search schemas - now with strongly typed filters
 export const TranslateQuerySchema = z.object({
   query: z.string().min(1),
-  filters: z.record(z.any()).optional(),
+  filters: z.array(FilterConditionSchema).optional(),
   k: z.number().int().positive().optional().default(5),
   provider: EmbeddingProviderSchema.optional().default("openai"),
 });
 
 export type TranslateQueryRequest = z.infer<typeof TranslateQuerySchema>;
 
+// Search hit schema - now with strongly typed payload
 export const SearchHitSchema = z.object({
   id: z.string(),
   score: z.number(),
-  payload: z.any(),
+  payload: VectorPayloadSchema,
 });
 
 export type SearchHit = z.infer<typeof SearchHitSchema>;
@@ -135,11 +146,12 @@ export const NaturalQuerySchema = z.object({
 
 export type NaturalQueryRequest = z.infer<typeof NaturalQuerySchema>;
 
+// Natural query response - now with strongly typed data field
 export const NaturalQueryResponseSchema = z.object({
   question: z.string(),
   answer: z.string(),
   query_type: z.string(),
-  data: z.any().optional(),
+  data: QueryResultSchema.optional(),
   execution_time_ms: z.number(),
 });
 
