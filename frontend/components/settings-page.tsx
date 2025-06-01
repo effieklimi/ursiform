@@ -126,25 +126,44 @@ export function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
 
-        // Use the new detailed status format
-        const newApiKeyStatus = {
+        // Parse the actual health response format
+        const services = data.services || {};
+        const providers = data.providers || [];
+
+        // Map the service status to API key status
+        const newApiKeyStatus: APIKeyStatusInfo = {
           openai: {
-            status: data.openai_status || "missing",
-            error: data.openai_error,
+            status: (providers.includes("openai")
+              ? services.openai
+                ? "working"
+                : "failed"
+              : "missing") as APIKeyStatus,
+            error:
+              services.openai === false
+                ? "OpenAI service not responding"
+                : undefined,
           },
           gemini: {
-            status: data.gemini_status || "missing",
-            error: data.gemini_error,
+            status: (providers.includes("gemini")
+              ? services.gemini
+                ? "working"
+                : "failed"
+              : "missing") as APIKeyStatus,
+            error:
+              services.gemini === false
+                ? "Gemini service not responding"
+                : undefined,
           },
         };
         setApiKeyStatus(newApiKeyStatus);
 
         // Extract database info from server response
         const newDatabaseInfo = {
-          connected: data.database_connected || false,
-          url: data.database_url || "localhost:6333",
-          hasApiKey: data.database_api_key || false,
-          error: data.database_error,
+          connected: services.qdrant || false,
+          url: data.config?.qdrant?.url || "Not configured",
+          hasApiKey: data.config?.qdrant?.hasApiKey || false,
+          error:
+            services.qdrant === false ? "Qdrant connection failed" : undefined,
         };
         setDatabaseInfo(newDatabaseInfo);
       } else {
@@ -388,21 +407,21 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {(apiKeyStatus.openai.status === "missing" ||
-                apiKeyStatus.gemini.status === "missing") && (
-                <div className="text-xs text-warning   p-3 rounded-lg border border-warning">
-                  Some API keys are missing. Configure them in your environment
-                  variables (.env file) to enable all features.
-                </div>
-              )}
+              {apiKeyStatus.openai.status === "missing" &&
+                apiKeyStatus.gemini.status === "missing" && (
+                  <div className="text-xs text-warning   p-3 rounded-lg border border-warning">
+                    No API keys are configured. Configure at least one in your
+                    environment variables (.env file) to enable AI features.
+                  </div>
+                )}
 
-              {(apiKeyStatus.openai.status === "failed" ||
-                apiKeyStatus.gemini.status === "failed") && (
-                <div className="text-xs text-destructive   p-3 rounded-lg border border-destructive">
-                  Some API keys are configured but not working. Please check
-                  your API keys and try again.
-                </div>
-              )}
+              {apiKeyStatus.openai.status === "failed" &&
+                apiKeyStatus.gemini.status === "failed" && (
+                  <div className="text-xs text-destructive   p-3 rounded-lg border border-destructive">
+                    All configured API keys are not working. Please check your
+                    API keys and try again.
+                  </div>
+                )}
             </CardContent>
           </Card>
 

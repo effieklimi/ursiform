@@ -113,6 +113,13 @@ export async function getHealthStatus() {
       services: serviceStatus,
       providers: getAvailableProviders(config),
       version: process.env.npm_package_version || "unknown",
+      config: {
+        qdrant: {
+          url: config.qdrant.url,
+          hasApiKey: !!config.qdrant.apiKey,
+          defaultCollection: config.qdrant.defaultCollection,
+        },
+      },
     };
   } catch (error) {
     return {
