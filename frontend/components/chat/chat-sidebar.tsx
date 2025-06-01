@@ -47,7 +47,7 @@ export function ChatSidebar({
   onNewChat,
 }: ChatSidebarProps) {
   return (
-    <div className="w-80 flex-shrink-0 border-r bg-background flex flex-col h-full">
+    <div className="w-72 flex-shrink-0 border-r bg-background flex flex-col h-full">
       {/* Chat List - Most Prominent */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -77,8 +77,8 @@ export function ChatSidebar({
                   onClick={() => onChatSwitch(chat.id)}
                   className={`w-full text-left p-3 rounded-lg transition-colors group ${
                     currentChatId === chat.id
-                      ? "bg-primary/10 border border-primary/20"
-                      : "hover:bg-accent/50"
+                      ? "bg-secondary-foreground/5"
+                      : "hover:bg-accent/70"
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -112,7 +112,6 @@ export function ChatSidebar({
                         })}
                       </div>
                     </div>
-                    <MessageSquare className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground flex-shrink-0 ml-2" />
                   </div>
                 </button>
               ))}
