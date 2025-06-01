@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processNaturalQuery } from "../../../lib/qdrant/nlp-query";
 import { loadConfig } from "../../../lib/config";
 import {
   NaturalQueryRequest,
@@ -14,6 +13,9 @@ import {
 } from "../../../lib/error-handler";
 import { ValidationError, ConfigurationError } from "../../../lib/errors";
 import { validateUserInput } from "../../../lib/validation";
+
+// Import our new architecture
+import { container } from "../../../backend/container";
 
 export async function POST(req: NextRequest) {
   const correlationId = generateCorrelationId();
@@ -76,25 +78,31 @@ export async function POST(req: NextRequest) {
       AVAILABLE_MODELS[selectedModel as keyof typeof AVAILABLE_MODELS];
     const providerInfo = modelInfo?.provider || "gemini";
 
-    const result = await processNaturalQuery(
-      collection || null,
-      question!,
-      providerInfo,
-      selectedModel,
-      context as any // Type assertion to handle schema mismatch
-    );
+    // Use the new architecture
+    console.log("Processing query with new architecture...");
+
+    const controller = container.get("vectorController") as any;
+    console.log("✓ VectorController retrieved from container");
+
+    const result = await controller.handleNaturalQuery({
+      question: question!,
+      collection: collection || undefined,
+      provider: providerInfo,
+      model: selectedModel,
+      context: context as any,
+    });
+
+    console.log("✓ Query completed successfully");
 
     const response: NaturalQueryResponse = {
       answer: result.answer,
       query_type: result.query_type,
       data: result.data,
       execution_time_ms: result.execution_time_ms,
-      context: result.context,
+      context: result.context as any,
     };
 
-    // Add correlation ID to the response headers (not in body since interface doesn't include it)
     headers.set("X-Correlation-ID", correlationId);
-
     return NextResponse.json(response, { status: 200, headers });
   } catch (error: any) {
     // Use the centralized error handler

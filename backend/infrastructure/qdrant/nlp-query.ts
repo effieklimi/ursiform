@@ -8,7 +8,7 @@ import {
   QueryIntent,
   ConversationContext,
   ConversationTurn,
-} from "../schemas";
+} from "../../../lib/schemas";
 import {
   validatePayload,
   validateQueryIntent,
@@ -16,8 +16,8 @@ import {
   ValidationError as CustomValidationError,
   isValidQdrantPoint,
   isValidLLMResponse,
-} from "../validation";
-import { getConfig, hasProvider } from "../config";
+} from "../../../lib/validation";
+import { getConfig, hasProvider } from "../../../lib/config";
 import {
   QueryParsingError,
   AuthenticationError,
@@ -27,7 +27,7 @@ import {
   CollectionNotFoundError,
   SearchOperationError,
   ValidationError,
-} from "../errors";
+} from "../../../lib/errors";
 import {
   PaginationOptions,
   PaginatedResult,
@@ -38,7 +38,7 @@ import {
   ProcessingConfig,
   DEFAULT_PROCESSING_CONFIG,
   SAFE_PROCESSING_CONFIG,
-} from "../pagination";
+} from "../../../lib/pagination";
 
 // Import strongly typed database interfaces
 import type {
@@ -48,7 +48,7 @@ import type {
   QdrantPoint,
   QdrantScrollResult,
   QdrantFilter,
-} from "../types/database";
+} from "../../../lib/types/database";
 
 // Lazy initialization of AI clients using config system
 let openaiInstance: OpenAI | null = null;

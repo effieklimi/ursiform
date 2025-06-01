@@ -1,5 +1,5 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
-import { getConfig } from "../config";
+import { getConfig } from "../../../lib/config";
 import {
   QdrantConnectionError,
   CollectionCreationError,
@@ -7,7 +7,7 @@ import {
   AuthenticationError,
   ConfigurationError,
   TimeoutError,
-} from "../errors";
+} from "../../../lib/errors";
 
 // Initialize client using centralized configuration
 function createQdrantClient(): QdrantClient {

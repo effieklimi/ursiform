@@ -1,14 +1,14 @@
 import { client } from "./db";
 import { embed } from "./embedder";
-import { getConfig } from "../config";
-import { SearchHit, EmbeddingProvider } from "../schemas";
+import { getConfig } from "../../../lib/config";
+import { SearchHit, EmbeddingProvider } from "../../../lib/schemas";
 import {
   CollectionNotFoundError,
   QdrantConnectionError,
   SearchOperationError,
   ValidationError,
   EmbeddingGenerationError,
-} from "../errors";
+} from "../../../lib/errors";
 
 interface TranslateAndSearchInput {
   query: string;

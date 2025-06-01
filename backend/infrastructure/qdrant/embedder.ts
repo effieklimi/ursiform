@@ -1,14 +1,15 @@
-import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
-import { getConfig, hasProvider } from "../config";
-import type { EmbeddingProvider } from "../schemas";
+import OpenAI from "openai";
+import { getConfig, hasProvider } from "../../../lib/config";
+import type { EmbeddingProvider } from "../../../lib/schemas";
 import {
   EmbeddingGenerationError,
-  AuthenticationError,
-  ProviderNotConfiguredError,
-  RateLimitError,
+  ConfigurationError,
   ValidationError,
-} from "../errors";
+  ProviderNotConfiguredError,
+  AuthenticationError,
+  RateLimitError,
+} from "../../../lib/errors";
 
 // Lazy initialization of clients
 let openaiInstance: OpenAI | null = null;
