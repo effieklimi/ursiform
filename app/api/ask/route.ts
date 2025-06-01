@@ -8,13 +8,21 @@ import {
   ConversationContext,
 } from "../../../lib/types";
 import { EmbeddingProvider } from "../../../lib/schemas";
+import {
+  handleVectorDBError,
+  generateCorrelationId,
+} from "../../../lib/error-handler";
+import { ValidationError, ConfigurationError } from "../../../lib/errors";
 
 export async function POST(req: NextRequest) {
+  const correlationId = generateCorrelationId();
+
   // Enable CORS
   const headers = new Headers({
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    "X-Correlation-ID": correlationId,
   });
 
   if (req.method === "OPTIONS") {
@@ -23,9 +31,26 @@ export async function POST(req: NextRequest) {
 
   try {
     // Load and validate configuration before processing
-    loadConfig();
+    try {
+      loadConfig();
+    } catch (error) {
+      throw new ConfigurationError(
+        "system configuration",
+        error instanceof Error ? error.message : "Failed to load configuration"
+      );
+    }
 
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      throw new ValidationError(
+        "request body",
+        "invalid JSON",
+        "Request body must be valid JSON"
+      );
+    }
+
     const {
       question,
       collection,
@@ -40,10 +65,21 @@ export async function POST(req: NextRequest) {
       context?: ConversationContext;
     } = body as NaturalQueryRequest;
 
+    // Validate required fields
     if (!question) {
-      return NextResponse.json(
-        { error: "Missing required field: question" },
-        { status: 400, headers }
+      throw new ValidationError(
+        "question",
+        question,
+        "Question is required and cannot be empty"
+      );
+    }
+
+    // Validate provider
+    if (provider && !["openai", "gemini"].includes(provider)) {
+      throw new ValidationError(
+        "provider",
+        provider,
+        "Provider must be either 'openai' or 'gemini'"
       );
     }
 
@@ -67,28 +103,34 @@ export async function POST(req: NextRequest) {
       data: result.data,
       execution_time_ms: result.execution_time_ms,
       context: result.context,
+      correlationId, // Add correlation ID to successful responses
     };
 
     return NextResponse.json(response, { status: 200, headers });
   } catch (error: any) {
-    // Check if it's a configuration error
-    if (
-      error.message?.includes("configuration") ||
-      error.message?.includes("environment")
-    ) {
-      return NextResponse.json(
-        {
-          error: "Configuration Error",
-          details: error.message,
-          hint: "Check your environment variables. See /api/health for more details.",
-        },
-        { status: 503, headers } // Service Unavailable
-      );
-    }
+    // Use the centralized error handler
+    const errorResponse = handleVectorDBError(error, correlationId);
+
+    // Log additional context for API requests
+    console.error("API Request Error:", {
+      correlationId,
+      path: req.url,
+      method: req.method,
+      userAgent: req.headers.get("user-agent"),
+      contentType: req.headers.get("content-type"),
+    });
 
     return NextResponse.json(
-      { error: error?.message || "Internal server error" },
-      { status: 500, headers }
+      {
+        error: errorResponse.message,
+        code: errorResponse.code,
+        correlationId: errorResponse.correlationId,
+        metadata: errorResponse.metadata,
+      },
+      {
+        status: errorResponse.statusCode,
+        headers,
+      }
     );
   }
 }

@@ -4,6 +4,16 @@ import { client } from "./db";
 import { EmbeddingProvider } from "../schemas";
 import { ConversationContext, ConversationTurn } from "../types";
 import { getConfig, hasProvider } from "../config";
+import {
+  QueryParsingError,
+  AuthenticationError,
+  ProviderNotConfiguredError,
+  RateLimitError,
+  QdrantConnectionError,
+  CollectionNotFoundError,
+  SearchOperationError,
+  ValidationError,
+} from "../errors";
 
 // Lazy initialization of AI clients using config system
 let openaiInstance: OpenAI | null = null;
@@ -117,33 +127,89 @@ export async function processNaturalQuery(
   const startTime = Date.now();
 
   try {
+    // Validate input
+    if (!question || question.trim().length === 0) {
+      throw new ValidationError(
+        "question",
+        question,
+        "Question cannot be empty"
+      );
+    }
+
+    if (question.length > 10000) {
+      throw new ValidationError(
+        "question",
+        question.length,
+        "Question too long (max 10,000 characters)"
+      );
+    }
+
     // Step 1: Resolve context and enrich the question
     const { enrichedQuestion, resolvedCollection, updatedContext } =
       await resolveContext(question, collection, context);
 
     // Step 2: Parse intent with context awareness
-    const intent = await parseQueryIntent(
-      enrichedQuestion,
-      provider,
-      model,
-      updatedContext
-    );
+    let intent;
+    try {
+      intent = await parseQueryIntent(
+        enrichedQuestion,
+        provider,
+        model,
+        updatedContext
+      );
+    } catch (error) {
+      // If intent parsing fails, throw a proper error instead of falling back
+      if (
+        error instanceof AuthenticationError ||
+        error instanceof ProviderNotConfiguredError ||
+        error instanceof RateLimitError
+      ) {
+        throw error; // Re-throw provider-specific errors
+      }
+
+      throw new QueryParsingError(enrichedQuestion, error as Error);
+    }
 
     // Step 3: Use resolved collection or extracted collection
     const finalCollection =
       resolvedCollection || intent.extractedCollection || null;
 
     // Step 4: Execute the appropriate operation
-    const result = await executeQuery(finalCollection, intent);
+    let result;
+    try {
+      result = await executeQuery(finalCollection, intent);
+    } catch (error) {
+      // Handle database operation errors
+      if (
+        error instanceof CollectionNotFoundError ||
+        error instanceof QdrantConnectionError ||
+        error instanceof SearchOperationError
+      ) {
+        throw error; // Re-throw database-specific errors
+      }
+
+      throw new SearchOperationError(
+        error as Error,
+        enrichedQuestion,
+        finalCollection || undefined
+      );
+    }
 
     // Step 5: Generate natural language response
-    const answer = await generateResponse(
-      enrichedQuestion,
-      intent,
-      result,
-      provider,
-      model
-    );
+    let answer;
+    try {
+      answer = await generateResponse(
+        enrichedQuestion,
+        intent,
+        result,
+        provider,
+        model
+      );
+    } catch (error) {
+      // If response generation fails, still return the data with a fallback message
+      console.warn("Response generation failed, using fallback:", error);
+      answer = generateFallbackResponse(enrichedQuestion, intent, result);
+    }
 
     // Step 6: Update conversation context
     const finalContext = updateConversationContext(
@@ -164,26 +230,20 @@ export async function processNaturalQuery(
       context: finalContext,
     };
   } catch (error) {
-    console.error("Error processing natural query:", error);
+    const execution_time_ms = Date.now() - startTime;
 
-    // Create fallback response
-    const fallbackAnswer =
-      "I encountered an issue processing your query, but I'm using pattern matching to help. " +
-      generateFallbackResponse(
-        question,
-        inferIntentFromQuestion(question, context),
-        {
-          count: 0,
-        }
-      );
+    // Re-throw our custom errors as-is - they contain proper error information
+    if (error instanceof Error && "code" in error) {
+      throw error;
+    }
 
-    return {
-      answer: fallbackAnswer,
-      query_type: "fallback",
-      data: null,
-      execution_time_ms: Date.now() - startTime,
-      context: context || { conversationHistory: [] },
-    };
+    console.error("Unexpected error processing natural query:", error);
+
+    // For completely unexpected errors, provide a generic fallback but still throw
+    throw new QueryParsingError(
+      question,
+      error instanceof Error ? error : new Error(String(error))
+    );
   }
 }
 

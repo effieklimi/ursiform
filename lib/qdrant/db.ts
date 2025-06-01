@@ -1,5 +1,13 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { getConfig } from "../config";
+import {
+  QdrantConnectionError,
+  CollectionCreationError,
+  CollectionNotFoundError,
+  AuthenticationError,
+  ConfigurationError,
+  TimeoutError,
+} from "../errors";
 
 // Initialize client using centralized configuration
 function createQdrantClient(): QdrantClient {
@@ -10,25 +18,40 @@ function createQdrantClient(): QdrantClient {
   // For cloud instances, use the recommended format from documentation
   if (config.qdrant.apiKey) {
     // Parse the URL to extract host
-    const url = new URL(config.qdrant.url);
-    const host = url.hostname;
-    const isHttps = url.protocol === "https:";
+    try {
+      const url = new URL(config.qdrant.url);
+      const host = url.hostname;
+      const isHttps = url.protocol === "https:";
 
-    clientConfig = {
-      host: host,
-      port: null, // This is critical for cloud instances - prevents :6333 being appended
-      https: isHttps,
-      apiKey: config.qdrant.apiKey,
-    };
+      clientConfig = {
+        host: host,
+        port: null, // This is critical for cloud instances - prevents :6333 being appended
+        https: isHttps,
+        apiKey: config.qdrant.apiKey,
+      };
 
-    console.log(`Connecting to Qdrant Cloud at ${host} (HTTPS: ${isHttps})`);
+      console.log(`Connecting to Qdrant Cloud at ${host} (HTTPS: ${isHttps})`);
+    } catch (error) {
+      throw new ConfigurationError(
+        "QDRANT_URL",
+        `Invalid URL format: ${config.qdrant.url}`
+      );
+    }
   } else {
     // For local instances without API key
-    clientConfig = {
-      url: config.qdrant.url,
-    };
+    try {
+      new URL(config.qdrant.url); // Validate URL format
+      clientConfig = {
+        url: config.qdrant.url,
+      };
 
-    console.log(`Connecting to local Qdrant at ${config.qdrant.url}`);
+      console.log(`Connecting to local Qdrant at ${config.qdrant.url}`);
+    } catch (error) {
+      throw new ConfigurationError(
+        "QDRANT_URL",
+        `Invalid URL format: ${config.qdrant.url}`
+      );
+    }
   }
 
   return new QdrantClient(clientConfig);
@@ -58,9 +81,10 @@ export async function testConnection(): Promise<boolean> {
     const client = getQdrantClient();
 
     // Use getCollections as a simple health check with timeout
-    const timeoutPromise = new Promise((_, reject) =>
+    const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error("Connection timeout")),
+        () =>
+          reject(new TimeoutError("connection test", config.qdrant.timeout)),
         config.qdrant.timeout
       )
     );
@@ -70,6 +94,23 @@ export async function testConnection(): Promise<boolean> {
     console.log("Qdrant connection successful");
     return true;
   } catch (error) {
+    if (error instanceof TimeoutError) {
+      console.error("Qdrant connection timed out:", error.message);
+      return false;
+    }
+
+    const errorMessage =
+      error instanceof Error ? error.message.toLowerCase() : "";
+
+    if (
+      errorMessage.includes("authentication") ||
+      errorMessage.includes("401") ||
+      errorMessage.includes("403")
+    ) {
+      console.error("Qdrant authentication failed:", error);
+      return false;
+    }
+
     console.error("Qdrant connection failed:", error);
     return false;
   }
@@ -86,8 +127,10 @@ export async function createCollection(
     // First test the connection
     const isConnected = await testConnection();
     if (!isConnected) {
-      throw new Error(
-        "Cannot connect to Qdrant database. Please check your configuration."
+      throw new QdrantConnectionError(
+        new Error("Connection test failed"),
+        "collection creation",
+        config.qdrant.url
       );
     }
 
@@ -104,42 +147,105 @@ export async function createCollection(
 
       // Check if it's a different error than "not found"
       if (error.status && error.status !== 404) {
+        const errorMessage = error.message?.toLowerCase() || "";
+
+        if (
+          error.status === 401 ||
+          error.status === 403 ||
+          errorMessage.includes("authentication")
+        ) {
+          throw new AuthenticationError("Qdrant", "collection access");
+        }
+
+        if (
+          errorMessage.includes("connection") ||
+          errorMessage.includes("timeout")
+        ) {
+          throw new QdrantConnectionError(
+            error,
+            "collection check",
+            config.qdrant.url
+          );
+        }
+
         console.error("Unexpected error checking collection:", error);
-        throw error;
+        throw new CollectionCreationError(collectionName, error);
       }
     }
 
-    await client.createCollection(collectionName, {
-      vectors: {
-        size: dimension,
-        distance: "Cosine",
-      },
-    });
+    // Validate dimension parameter
+    if (dimension <= 0 || dimension > 65536) {
+      throw new ConfigurationError(
+        "dimension",
+        `Dimension must be between 1 and 65536, got ${dimension}`
+      );
+    }
 
-    console.log(
-      `Collection "${collectionName}" created successfully with dimension ${dimension}`
-    );
+    try {
+      await client.createCollection(collectionName, {
+        vectors: {
+          size: dimension,
+          distance: "Cosine",
+        },
+      });
+
+      console.log(
+        `Collection "${collectionName}" created successfully with dimension ${dimension}`
+      );
+    } catch (error: any) {
+      const errorMessage = error.message?.toLowerCase() || "";
+
+      if (
+        error.status === 401 ||
+        error.status === 403 ||
+        errorMessage.includes("authentication")
+      ) {
+        throw new AuthenticationError("Qdrant", "collection creation");
+      }
+
+      if (
+        errorMessage.includes("connection") ||
+        errorMessage.includes("timeout")
+      ) {
+        throw new QdrantConnectionError(
+          error,
+          "collection creation",
+          config.qdrant.url
+        );
+      }
+
+      throw new CollectionCreationError(collectionName, error);
+    }
   } catch (error: any) {
-    console.error(`Error creating collection "${collectionName}":`, error);
+    // Re-throw our custom errors as-is
+    if (error instanceof Error && "code" in error) {
+      throw error;
+    }
 
-    // Provide more specific error messages
+    console.error(
+      `Unexpected error creating collection "${collectionName}":`,
+      error
+    );
+
+    // Provide more specific error messages for common cases
+    const errorMessage = error.message?.toLowerCase() || "";
+
     if (
-      error.message?.includes("authentication") ||
+      errorMessage.includes("authentication") ||
       error.status === 401 ||
       error.status === 403
     ) {
-      throw new Error(
-        "Authentication failed. Please check your QDRANT_API_KEY and QDRANT_URL."
-      );
-    } else if (
-      error.message?.includes("connection") ||
-      error.code === "ECONNREFUSED"
-    ) {
-      throw new Error(
-        "Cannot connect to Qdrant. Please check your QDRANT_URL."
-      );
-    } else {
-      throw error;
+      throw new AuthenticationError("Qdrant", "collection creation");
     }
+
+    if (errorMessage.includes("connection") || error.code === "ECONNREFUSED") {
+      throw new QdrantConnectionError(
+        error,
+        "collection creation",
+        config.qdrant.url
+      );
+    }
+
+    throw new CollectionCreationError(collectionName, error);
   }
 }

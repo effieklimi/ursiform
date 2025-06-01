@@ -11,6 +11,7 @@ export interface NaturalQueryResponse {
   data?: any;
   execution_time_ms: number;
   context?: ConversationContext; // Add conversation context to response
+  correlationId?: string; // Add correlation ID for error tracking
 }
 
 export interface ConversationContext {
