@@ -5,7 +5,7 @@ This project uses **Prisma** with **SQLite** for local data persistence of chat 
 ## Database Configuration
 
 - **Database Type**: SQLite
-- **Database File**: `dev.db` (stored at the project root)
+- **Database File**: `dev.db` (stored in `prisma/` directory)
 - **Schema Location**: `prisma/schema.prisma`
 - **Client Location**: `lib/prisma.ts`
 
@@ -128,14 +128,14 @@ const chatWithMessages = await DatabaseService.getChat(chat.id);
 The database URL is configured in `.env`:
 
 ```
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:./prisma/dev.db"
 ```
 
 ## Files Structure
 
 ```
-├── dev.db                 # SQLite database file
 ├── prisma/
+│   ├── dev.db             # SQLite database file
 │   └── schema.prisma      # Database schema
 ├── lib/
 │   ├── prisma.ts          # Prisma client instance

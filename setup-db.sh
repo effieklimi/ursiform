@@ -6,13 +6,13 @@ echo "🗄️  Setting up SQLite database for Ursiform..."
 # Create .env.local file if it doesn't exist
 if [ ! -f .env.local ]; then
     echo "📝 Creating .env.local file..."
-    echo "DATABASE_URL=\"file:./dev.db\"" > .env.local
+    echo "DATABASE_URL=\"file:./prisma/dev.db\"" > .env.local
     echo "✅ Created .env.local with DATABASE_URL"
 else
     # Check if DATABASE_URL exists in .env.local
     if ! grep -q "DATABASE_URL" .env.local; then
         echo "📝 Adding DATABASE_URL to existing .env.local..."
-        echo "DATABASE_URL=\"file:./dev.db\"" >> .env.local
+        echo "DATABASE_URL=\"file:./prisma/dev.db\"" >> .env.local
         echo "✅ Added DATABASE_URL to .env.local"
     else
         echo "✅ DATABASE_URL already exists in .env.local"

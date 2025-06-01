@@ -1,12 +1,12 @@
-import { translateAndSearch } from "../../backend/qdrant/translator";
+import { translateAndSearch } from "../../lib/qdrant/translator";
 
 // Mock qdrant dependencies
-jest.mock("../../backend/qdrant/embedder", () => ({
+jest.mock("../../lib/qdrant/embedder", () => ({
   embed: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
 }));
 
 // Mock the Qdrant client
-jest.mock("../../backend/qdrant/db", () => ({
+jest.mock("../../lib/qdrant/db", () => ({
   client: {
     search: jest.fn().mockResolvedValue([
       {
@@ -62,7 +62,7 @@ describe("Translator Tests", () => {
       expect(result).toHaveLength(2);
 
       // Verify that the client.search was called with filters
-      const { client } = require("../../backend/qdrant/db");
+      const { client } = require("../../lib/qdrant/db");
       expect(client.search).toHaveBeenCalledWith("my_collection", {
         vector: [0.1, 0.2, 0.3, 0.4, 0.5],
         limit: 3,
@@ -84,7 +84,7 @@ describe("Translator Tests", () => {
 
       await translateAndSearch(input);
 
-      const { client } = require("../../backend/qdrant/db");
+      const { client } = require("../../lib/qdrant/db");
       expect(client.search).toHaveBeenCalledWith("my_collection", {
         vector: [0.1, 0.2, 0.3, 0.4, 0.5],
         limit: 5,
@@ -93,7 +93,7 @@ describe("Translator Tests", () => {
     });
 
     it("should throw error when embedding fails", async () => {
-      const { embed } = require("../../backend/qdrant/embedder");
+      const { embed } = require("../../lib/qdrant/embedder");
       embed.mockRejectedValue(new Error("Embedding failed"));
 
       await expect(translateAndSearch({ query: "test" })).rejects.toThrow(
@@ -102,7 +102,7 @@ describe("Translator Tests", () => {
     });
 
     it("should throw error when search fails", async () => {
-      const { client } = require("../../backend/qdrant/db");
+      const { client } = require("../../lib/qdrant/db");
       client.search.mockRejectedValue(new Error("Search failed"));
 
       await expect(translateAndSearch({ query: "test" })).rejects.toThrow(

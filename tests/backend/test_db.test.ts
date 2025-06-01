@@ -1,4 +1,4 @@
-import { createCollection } from "../../backend/qdrant/db";
+import { createCollection } from "../../lib/qdrant/db";
 
 // Mock the QdrantClient
 jest.mock("@qdrant/js-client-rest", () => {
@@ -27,7 +27,7 @@ describe("Database Tests", () => {
 
       // Re-require the module to trigger initialization
       jest.resetModules();
-      require("../../backend/qdrant/db");
+      require("../../lib/qdrant/db");
 
       expect(QdrantClient).toHaveBeenCalledWith({
         url: "http://localhost:6333",
@@ -42,7 +42,7 @@ describe("Database Tests", () => {
 
       // Re-require the module to trigger initialization
       jest.resetModules();
-      require("../../backend/qdrant/db");
+      require("../../lib/qdrant/db");
 
       expect(QdrantClient).toHaveBeenCalledWith({
         url: "https://test-cluster.cloud.qdrant.io:6333",
