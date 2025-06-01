@@ -10,39 +10,141 @@ A natural language interface for vector databases. Works on the browser. Query y
 - _Flexible Schema_: Works with any vector database schema.
 - _Markdown Rendering_: Answers are formatted for easy reading.
 - _Modern UI_: Clean, full-screen interface.
+- _Robust Configuration_: Comprehensive validation with helpful error messages.
 
-### Environment Variables
+## Quick Start
 
-Set these in your .env file (see `env.example`):
+1. **Clone & Install**
+
+   ```bash
+   git clone https://github.com/effieklimi/ursiform.git
+   cd ursiform
+   npm install
+   ```
+
+2. **Configure Environment**
+
+   ```bash
+   cp env.example .env.local
+   # Edit .env.local with your API keys
+   ```
+
+3. **Set Required Variables**
+   At minimum, you need one embedding provider:
+
+   ```bash
+   # Option 1: OpenAI (recommended)
+   OPENAI_API_KEY=sk-your-actual-key
+
+   # Option 2: Google Gemini
+   GEMINI_API_KEY=your-actual-key
+   ```
+
+4. **Run Development Server**
+   ```bash
+   npm run dev
+   ```
+
+## Configuration
+
+Ursiform uses a robust configuration system with **automatic validation** and **helpful error messages**. The app will fail fast with clear guidance if required variables are missing.
+
+### Required Configuration
+
+| Variable         | Description                   | Default | Required       |
+| ---------------- | ----------------------------- | ------- | -------------- |
+| `OPENAI_API_KEY` | OpenAI API key for embeddings | -       | ⭐ (or Gemini) |
+| `GEMINI_API_KEY` | Google Gemini API key         | -       | ⭐ (or OpenAI) |
+
+### Vector Database Configuration
+
+| Variable                    | Description                 | Default                 | Required        |
+| --------------------------- | --------------------------- | ----------------------- | --------------- |
+| `QDRANT_URL`                | Qdrant database URL         | `http://localhost:6333` | ✅              |
+| `QDRANT_API_KEY`            | Qdrant API key (cloud only) | -                       | 🏗️ (production) |
+| `QDRANT_DEFAULT_COLLECTION` | Default collection name     | `vectors`               | ❌              |
+| `QDRANT_MAX_RETRIES`        | Connection retry attempts   | `3`                     | ❌              |
+| `QDRANT_TIMEOUT`            | Connection timeout (ms)     | `30000`                 | ❌              |
+
+### Optional Configuration
+
+| Variable                 | Description            | Default                  |
+| ------------------------ | ---------------------- | ------------------------ |
+| `NODE_ENV`               | Environment mode       | `development`            |
+| `LOG_LEVEL`              | Logging level          | `info`                   |
+| `PORT`                   | Server port            | `3000`                   |
+| `OPENAI_EMBEDDING_MODEL` | OpenAI embedding model | `text-embedding-ada-002` |
+| `OPENAI_MAX_TOKENS`      | OpenAI token limit     | `8191`                   |
+| `GEMINI_MODEL`           | Gemini embedding model | `text-embedding-004`     |
+| `DATABASE_URL`           | SQLite/PostgreSQL URL  | `file:./prisma/dev.db`   |
+
+### Configuration Examples
+
+#### Local Development
 
 ```bash
-DATABASE_URL=...
-QDRANT_URL=...
-QDRANT_API_KEY=...
-OPENAI_API_KEY=...
-GEMINI_API_KEY=...
+# .env.local
+OPENAI_API_KEY=sk-your-key
+QDRANT_URL=http://localhost:6333
 ```
 
-#### Environment Variables
-
-#### Common Scenarios
-
-**Global API Keys**: If you use API keys across multiple projects, set them in your shell:
+#### Production with Qdrant Cloud
 
 ```bash
-# In ~/.zshrc or ~/.bashrc
-export OPENAI_API_KEY="sk-your-global-key"
-export GEMINI_API_KEY="your-global-gemini-key"
+# .env.local
+OPENAI_API_KEY=sk-your-key
+QDRANT_URL=https://your-cluster.region.gcp.cloud.qdrant.io
+QDRANT_API_KEY=your-qdrant-api-key
+NODE_ENV=production
 ```
 
-**⚠️ Important**: Once set in your shell, these **cannot be overridden** by any `.env` files.
-
-**Project-Specific Keys**: If you need different keys per project, **do not** set them in your shell. Instead set the following in your `.env` or `.env.local`:
+#### Custom Collection and Providers
 
 ```bash
-OPENAI_API_KEY=<your-openai-key>
-GEMINI_API_KEY=<your-gemini-key>
+OPENAI_API_KEY=sk-your-key
+GEMINI_API_KEY=your-gemini-key
+QDRANT_DEFAULT_COLLECTION=my_documents
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
+
+### Configuration Validation
+
+The app automatically validates your configuration on startup:
+
+✅ **Startup Success:**
+
+```
+🔧 Loading application configuration...
+✅ Configuration loaded successfully
+📍 Environment: development
+🗄️  Qdrant URL: http://localhost:6333
+🔑 Embedding providers: openai
+📦 Default collection: vectors
+```
+
+❌ **Configuration Errors:**
+
+```
+❌ Configuration validation failed:
+  • embeddings: At least one embedding provider must be configured
+    💡 Set environment variable: OPENAI_API_KEY
+  • qdrant.url: Invalid url
+    💡 Set environment variable: QDRANT_URL
+
+📖 See .env.example for required environment variables
+```
+
+### Health Check
+
+Check your configuration anytime:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+Response includes service status, available providers, and configuration validation.
+
+## Schema Configuration
 
 For custom data schemas, you can optionally set:
 
@@ -55,7 +157,7 @@ URL_FIELD=            # Field for URLs (default: "item_url")
 DESCRIPTION_FIELD=    # Field for descriptions (default: "description")
 ```
 
-### Example Configurations
+### Example Schema Configurations
 
 #### For Document Collections:
 
@@ -89,36 +191,6 @@ FILENAME_FIELD=paper_title
 URL_FIELD=paper_url
 DESCRIPTION_FIELD=abstract
 ```
-
-## Setup
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/effieklimi/ursiform.git
-   cd ursiform
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-
-   ```bash
-   cp env.example .env
-   # Edit .env with your API keys and database details
-   # Set up Qdrant connection details
-   # Optional: Configure field mappings for your data schema as described above
-   ```
-
-4. **Run the development server**
-
-   ```bash
-   npm run dev
-   ```
 
 ## Usage
 

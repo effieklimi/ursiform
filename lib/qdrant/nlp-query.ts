@@ -3,12 +3,41 @@ import { GoogleGenAI } from "@google/genai";
 import { client } from "./db";
 import { EmbeddingProvider } from "../schemas";
 import { ConversationContext, ConversationTurn } from "../types";
+import { getConfig, hasProvider } from "../config";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization of AI clients using config system
+let openaiInstance: OpenAI | null = null;
+let geminiInstance: GoogleGenAI | null = null;
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+function getOpenAIClient(): OpenAI {
+  if (!openaiInstance) {
+    const config = getConfig();
+    if (!config.embeddings.openai) {
+      throw new Error(
+        "OpenAI not configured. Set OPENAI_API_KEY environment variable."
+      );
+    }
+    openaiInstance = new OpenAI({
+      apiKey: config.embeddings.openai.apiKey,
+    });
+  }
+  return openaiInstance;
+}
+
+function getGeminiClient(): GoogleGenAI {
+  if (!geminiInstance) {
+    const config = getConfig();
+    if (!config.embeddings.gemini) {
+      throw new Error(
+        "Gemini not configured. Set GEMINI_API_KEY environment variable."
+      );
+    }
+    geminiInstance = new GoogleGenAI({
+      apiKey: config.embeddings.gemini.apiKey,
+    });
+  }
+  return geminiInstance;
+}
 
 // Configuration for different database schemas
 interface DatabaseConfig {
@@ -591,15 +620,21 @@ Examples:
   try {
     let response: string;
 
-    if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const result = await genAI.models.generateContent({
+    // If we don't have API keys, use fallback
+    if (!hasProvider("openai") && !hasProvider("gemini")) {
+      console.log("No API keys available, using pattern matching fallback");
+      return inferIntentFromQuestion(question, context);
+    }
+
+    if (hasProvider(provider) && provider === "gemini") {
+      const result = await getGeminiClient().models.generateContent({
         model: model || "gemini-2.0-flash",
         contents: [{ text: systemPrompt }, { text: `Question: "${question}"` }],
       });
       response = result.text || "fallbackResponse";
-    } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
+    } else if (hasProvider(provider) && provider === "openai") {
       try {
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAIClient().chat.completions.create({
           model: model || "gpt-3.5-turbo", // Use specific model parameter
           messages: [
             { role: "system", content: systemPrompt },
@@ -614,8 +649,8 @@ Examples:
           openaiError.message
         );
         // Auto-fallback to Gemini if OpenAI fails
-        if (process.env.GEMINI_API_KEY) {
-          const result = await genAI.models.generateContent({
+        if (hasProvider("gemini")) {
+          const result = await getGeminiClient().models.generateContent({
             model: "gemini-2.0-flash",
             contents: [
               { text: systemPrompt },
@@ -1836,7 +1871,8 @@ async function generateResponse(
   const fallbackResponse = generateFallbackResponse(question, intent, data);
   const config = DEFAULT_CONFIG;
 
-  if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+  // Check if any providers are available using config system
+  if (!hasProvider("openai") && !hasProvider("gemini")) {
     return fallbackResponse;
   }
 
@@ -1894,15 +1930,21 @@ Provide a natural language response based on these guidelines and the provided d
   try {
     let response: string;
 
-    if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const result = await genAI.models.generateContent({
+    // If we don't have API keys, use fallback
+    if (!hasProvider("openai") && !hasProvider("gemini")) {
+      console.log("No API keys available, using pattern matching fallback");
+      return fallbackResponse;
+    }
+
+    if (hasProvider(provider) && provider === "gemini") {
+      const result = await getGeminiClient().models.generateContent({
         model: model || "gemini-2.0-flash",
         contents: [{ text: systemPrompt }, { text: `Question: "${question}"` }],
       });
       response = result.text || "fallbackResponse";
-    } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
+    } else if (hasProvider(provider) && provider === "openai") {
       try {
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAIClient().chat.completions.create({
           model: model || "gpt-3.5-turbo", // Use specific model parameter
           messages: [
             { role: "system", content: systemPrompt },
@@ -1913,12 +1955,12 @@ Provide a natural language response based on these guidelines and the provided d
         response = completion.choices[0].message.content || "{}";
       } catch (openaiError: any) {
         console.warn(
-          "OpenAI failed in generateResponse, trying Gemini fallback:",
+          "OpenAI failed, trying Gemini fallback:",
           openaiError.message
         );
         // Auto-fallback to Gemini if OpenAI fails
-        if (process.env.GEMINI_API_KEY) {
-          const result = await genAI.models.generateContent({
+        if (hasProvider("gemini")) {
+          const result = await getGeminiClient().models.generateContent({
             model: "gemini-2.0-flash",
             contents: [
               { text: systemPrompt },
@@ -1931,7 +1973,7 @@ Provide a natural language response based on these guidelines and the provided d
         }
       }
     } else {
-      return fallbackResponse;
+      throw new Error("No valid API key for the specified provider");
     }
 
     return response.trim();

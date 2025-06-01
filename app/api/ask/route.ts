@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processNaturalQuery } from "../../../lib/qdrant/nlp-query";
+import { loadConfig } from "../../../lib/config";
 import {
   NaturalQueryRequest,
   NaturalQueryResponse,
@@ -21,6 +22,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Load and validate configuration before processing
+    loadConfig();
+
     const body = await req.json();
     const {
       question,
@@ -67,6 +71,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response, { status: 200, headers });
   } catch (error: any) {
+    // Check if it's a configuration error
+    if (
+      error.message?.includes("configuration") ||
+      error.message?.includes("environment")
+    ) {
+      return NextResponse.json(
+        {
+          error: "Configuration Error",
+          details: error.message,
+          hint: "Check your environment variables. See /api/health for more details.",
+        },
+        { status: 503, headers } // Service Unavailable
+      );
+    }
+
     return NextResponse.json(
       { error: error?.message || "Internal server error" },
       { status: 500, headers }
