@@ -22,6 +22,8 @@
     "test:embedder": "node scripts/test-runner.js --suite=embedder",
     "test:nlp": "node scripts/test-runner.js --suite=nlp-query",
     "test:demo": "node scripts/demo-test-runner.js",
+    "test:errors": "tsx lib/test-error-handling.ts",
+    "test:errors-integration": "tsx lib/test-integration-errors.ts",
     "type-check": "tsc --noEmit",
     "docker:build": "docker build -t ursiform .",
     "docker:run": "docker run -p 3000:3000 ursiform",
@@ -77,6 +79,7 @@
     "jest-environment-node": "^29.7.0",
     "tailwindcss": "^3.4.0",
     "ts-jest": "^29.3.4",
+    "tsx": "^4.19.4",
     "typescript": "^5.3.2"
   },
   "engines": {
