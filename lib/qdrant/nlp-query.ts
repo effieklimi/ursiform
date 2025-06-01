@@ -21,6 +21,9 @@ import {
   createPaginatedResponse,
   logQueryPerformance,
   QueryPerformanceMetrics,
+  ProcessingConfig,
+  DEFAULT_PROCESSING_CONFIG,
+  SAFE_PROCESSING_CONFIG,
 } from "../pagination";
 
 // Lazy initialization of AI clients using config system
@@ -125,7 +128,8 @@ export async function processNaturalQuery(
   provider: EmbeddingProvider = "openai",
   model?: string, // Add specific model parameter
   context?: ConversationContext, // Add conversation context
-  pagination?: PaginationOptions // Add pagination support
+  pagination?: PaginationOptions, // Add pagination support
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG // Allow unlimited processing
 ): Promise<{
   answer: string;
   query_type: string;
@@ -194,10 +198,15 @@ export async function processNaturalQuery(
     const finalCollection =
       resolvedCollection || intent.extractedCollection || null;
 
-    // Step 4: Execute the appropriate operation with pagination support
+    // Step 4: Execute the appropriate operation with pagination support and processing config
     let result;
     try {
-      result = await executeQuery(finalCollection, intent, validatedPagination);
+      result = await executeQuery(
+        finalCollection,
+        intent,
+        validatedPagination,
+        processingConfig
+      );
     } catch (error) {
       // Handle database operation errors
       if (
@@ -254,12 +263,20 @@ export async function processNaturalQuery(
         : undefined;
 
     // Log overall query performance
+    const processingMode =
+      processingConfig === DEFAULT_PROCESSING_CONFIG
+        ? "unlimited"
+        : processingConfig === SAFE_PROCESSING_CONFIG
+        ? "safe"
+        : "paginated";
+
     logQueryPerformance({
       queryType: intent.type,
       collection: finalCollection || undefined,
       duration: execution_time_ms,
       recordsProcessed: result?.count || 0,
       memoryEfficient: true,
+      processingMode: processingMode,
     });
 
     return {
@@ -1240,10 +1257,11 @@ function extractCollectionFromQuestion(
 async function executeQuery(
   collection: string | null,
   intent: QueryIntent,
-  pagination?: PaginationOptions
+  pagination?: PaginationOptions,
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG
 ): Promise<any> {
   if (intent.scope === "database") {
-    return await executeDatabaseQuery(intent, pagination);
+    return await executeDatabaseQuery(intent, pagination, processingConfig);
   } else {
     // Collection-level query - require collection name
     if (!collection) {
@@ -1251,13 +1269,19 @@ async function executeQuery(
         "Collection name is required for collection-level queries"
       );
     }
-    return await executeCollectionQuery(collection, intent, pagination);
+    return await executeCollectionQuery(
+      collection,
+      intent,
+      pagination,
+      processingConfig
+    );
   }
 }
 
 async function executeDatabaseQuery(
   intent: QueryIntent,
-  pagination?: PaginationOptions
+  pagination?: PaginationOptions,
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG
 ): Promise<any> {
   const config = DEFAULT_CONFIG;
   switch (intent.type) {
@@ -1450,7 +1474,8 @@ async function executeDatabaseQuery(
 async function executeCollectionQuery(
   collection: string,
   intent: QueryIntent,
-  pagination?: PaginationOptions
+  pagination?: PaginationOptions,
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG
 ): Promise<any> {
   const config = DEFAULT_CONFIG;
   switch (intent.type) {
@@ -1484,7 +1509,8 @@ async function executeCollectionQuery(
           intent.filter,
           limit,
           config,
-          offset
+          offset,
+          processingConfig
         );
         return {
           total_count: totalCount.count,
@@ -1499,11 +1525,15 @@ async function executeCollectionQuery(
         };
       }
       // Regular search with filters
+      const limit = pagination?.limit || intent.limit || 10;
+      const offset = pagination?.offset;
       return await searchItems(
         collection,
         intent.filter,
-        intent.limit || 10,
-        config
+        limit,
+        config,
+        offset,
+        processingConfig
       );
 
     case "summarize":
@@ -1797,18 +1827,32 @@ async function countTotal(collection: string): Promise<{ count: number }> {
 
 async function countUniqueEntities(
   collection: string,
-  config: DatabaseConfig = DEFAULT_CONFIG
+  config: DatabaseConfig = DEFAULT_CONFIG,
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG
 ): Promise<{ count: number; entities: string[] }> {
   const startTime = Date.now();
   const uniqueEntities = new Set<string>();
   let offset: string | number | undefined = undefined;
   let hasMore = true;
   let totalProcessed = 0;
-  const CHUNK_SIZE = 100; // Process in small chunks
-  const MAX_ENTITIES_TO_COLLECT = 1000; // Reasonable limit to prevent memory issues
+  const CHUNK_SIZE = processingConfig.chunkSize;
+
+  // Use processing config limits or unlimited
+  const maxEntities =
+    processingConfig.maxEntities === "unlimited"
+      ? Number.MAX_SAFE_INTEGER
+      : processingConfig.maxEntities;
+  const maxRecords =
+    processingConfig.maxRecordsPerCollection === "unlimited"
+      ? Number.MAX_SAFE_INTEGER
+      : processingConfig.maxRecordsPerCollection;
 
   try {
-    while (hasMore && uniqueEntities.size < MAX_ENTITIES_TO_COLLECT) {
+    while (
+      hasMore &&
+      uniqueEntities.size < maxEntities &&
+      totalProcessed < maxRecords
+    ) {
       const response = await client.scroll(collection, {
         limit: CHUNK_SIZE,
         ...(offset !== undefined && { offset }),
@@ -1834,27 +1878,47 @@ async function countUniqueEntities(
         offset = undefined;
       }
 
-      // Safety check to prevent infinite loops
-      if (totalProcessed > 10000) {
-        console.warn(
-          `Stopping entity count after processing ${totalProcessed} records to prevent memory issues`
+      // Progress logging for large operations
+      if (
+        processingConfig.enableProgressLogging &&
+        totalProcessed % 5000 === 0 &&
+        totalProcessed > 0
+      ) {
+        console.log(
+          `📊 Progress: Processed ${totalProcessed} records, found ${uniqueEntities.size} unique entities`
         );
-        break;
       }
     }
 
     const duration = Date.now() - startTime;
+    const processingMode =
+      processingConfig.maxEntities === "unlimited" ? "unlimited" : "safe";
+
     logQueryPerformance({
       queryType: "count_unique_entities",
       collection,
       duration,
       recordsProcessed: totalProcessed,
-      memoryEfficient: true, // Now using chunked processing
+      memoryEfficient: true,
+      processingMode: processingMode,
     });
+
+    // Log completion status
+    if (
+      totalProcessed >= maxRecords &&
+      maxRecords !== Number.MAX_SAFE_INTEGER
+    ) {
+      console.warn(
+        `Entity count limited to ${totalProcessed} records processed (max: ${maxRecords})`
+      );
+    }
 
     return {
       count: uniqueEntities.size,
-      entities: Array.from(uniqueEntities).slice(0, 50), // Return reasonable sample size
+      entities: Array.from(uniqueEntities).slice(
+        0,
+        Math.min(50, uniqueEntities.size)
+      ),
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -1864,6 +1928,7 @@ async function countUniqueEntities(
       duration,
       recordsProcessed: totalProcessed,
       memoryEfficient: true,
+      processingMode: "safe",
     });
     throw error;
   }
@@ -1874,19 +1939,28 @@ async function searchItems(
   filter: any,
   limit: number,
   config: DatabaseConfig = DEFAULT_CONFIG,
-  offset?: string
+  offset?: string,
+  processingConfig: ProcessingConfig = DEFAULT_PROCESSING_CONFIG
 ): Promise<any> {
   const startTime = Date.now();
 
-  // Validate and cap the limit to prevent memory issues
-  const safeLimit = Math.min(limit, 100);
+  // Apply processing config limits
+  const maxLimit =
+    processingConfig.maxRecordsPerCollection === "unlimited"
+      ? Math.min(limit, 10000) // Still cap individual requests reasonably
+      : Math.min(
+          limit,
+          typeof processingConfig.maxRecordsPerCollection === "number"
+            ? processingConfig.maxRecordsPerCollection
+            : 100
+        );
 
   // Convert filter to Qdrant-compatible format
   const qdrantFilter = convertIntentFilterToQdrant(filter, config);
 
   try {
     const response = await client.scroll(collection, {
-      limit: safeLimit,
+      limit: maxLimit,
       ...(offset && { offset }),
       with_payload: true,
       with_vector: false,
@@ -1921,6 +1995,10 @@ async function searchItems(
     });
 
     const duration = Date.now() - startTime;
+    const processingMode =
+      processingConfig.maxRecordsPerCollection === "unlimited"
+        ? "unlimited"
+        : "safe";
 
     // Log performance metrics
     logQueryPerformance({
@@ -1928,7 +2006,8 @@ async function searchItems(
       collection,
       duration,
       recordsProcessed: response.points.length,
-      memoryEfficient: true, // Now using database filtering
+      memoryEfficient: true,
+      processingMode: processingMode,
     });
 
     return {
@@ -1945,6 +2024,7 @@ async function searchItems(
       duration,
       recordsProcessed: 0,
       memoryEfficient: true,
+      processingMode: "safe",
     });
     throw error;
   }
