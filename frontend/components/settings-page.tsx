@@ -224,7 +224,7 @@ export function SettingsPage() {
         return (
           <Badge
             variant="default"
-            className="bg-success text-success-foreground"
+            className="border border-success text-success bg-background"
           >
             Working
           </Badge>
@@ -484,7 +484,7 @@ export function SettingsPage() {
                     }
                     className={
                       databaseInfo.hasApiKey
-                        ? "bg-success"
+                        ? "border border-success text-success bg-background"
                         : "bg-secondary flex items-center gap-1"
                     }
                   >
@@ -513,7 +513,9 @@ export function SettingsPage() {
                   <Badge
                     variant={databaseInfo.hasApiKey ? "default" : "secondary"}
                     className={
-                      databaseInfo.hasApiKey ? "bg-success" : "bg-secondary"
+                      databaseInfo.hasApiKey
+                        ? "border border-success text-success bg-background"
+                        : "bg-secondary"
                     }
                   >
                     {databaseInfo.hasApiKey ? "Configured" : "Optional"}
