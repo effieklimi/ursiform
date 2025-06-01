@@ -144,3 +144,58 @@ export const NaturalQueryResponseSchema = z.object({
 });
 
 export type NaturalQueryResponse = z.infer<typeof NaturalQueryResponseSchema>;
+
+// Pagination schemas
+export const PaginationSchema = z.object({
+  limit: z.number().min(1).max(100).default(20),
+  offset: z.string().optional(),
+});
+
+export type PaginationRequest = z.infer<typeof PaginationSchema>;
+
+export const PaginatedResponseSchema = z.object({
+  data: z.array(z.any()),
+  pagination: z.object({
+    hasMore: z.boolean(),
+    nextOffset: z.string().optional(),
+    totalCount: z.number().optional(),
+    limit: z.number(),
+  }),
+});
+
+export type PaginatedResponse = z.infer<typeof PaginatedResponseSchema>;
+
+// Enhanced Natural Language Query schemas with pagination
+export const EnhancedNaturalQuerySchema = z.object({
+  collection: z.string().optional(), // Make collection optional for database-wide queries
+  question: z.string().min(1, "Question is required"),
+  provider: EmbeddingProviderSchema.optional().default("openai"),
+  model: z.string().optional(),
+  pagination: PaginationSchema.optional(),
+  context: z.any().optional(), // Conversation context
+});
+
+export type EnhancedNaturalQueryRequest = z.infer<
+  typeof EnhancedNaturalQuerySchema
+>;
+
+export const EnhancedNaturalQueryResponseSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+  query_type: z.string(),
+  data: z.any().optional(),
+  execution_time_ms: z.number(),
+  context: z.any().optional(),
+  pagination: z
+    .object({
+      hasMore: z.boolean().optional(),
+      nextOffset: z.string().optional(),
+      totalCount: z.number().optional(),
+      limit: z.number().optional(),
+    })
+    .optional(),
+});
+
+export type EnhancedNaturalQueryResponse = z.infer<
+  typeof EnhancedNaturalQueryResponseSchema
+>;

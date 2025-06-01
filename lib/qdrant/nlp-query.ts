@@ -14,6 +14,14 @@ import {
   SearchOperationError,
   ValidationError,
 } from "../errors";
+import {
+  PaginationOptions,
+  PaginatedResult,
+  validatePagination,
+  createPaginatedResponse,
+  logQueryPerformance,
+  QueryPerformanceMetrics,
+} from "../pagination";
 
 // Lazy initialization of AI clients using config system
 let openaiInstance: OpenAI | null = null;
@@ -116,13 +124,20 @@ export async function processNaturalQuery(
   question: string,
   provider: EmbeddingProvider = "openai",
   model?: string, // Add specific model parameter
-  context?: ConversationContext // Add conversation context
+  context?: ConversationContext, // Add conversation context
+  pagination?: PaginationOptions // Add pagination support
 ): Promise<{
   answer: string;
   query_type: string;
   data?: any;
   execution_time_ms: number;
   context: ConversationContext; // Return updated context
+  pagination?: {
+    hasMore: boolean;
+    nextOffset?: string;
+    totalCount?: number;
+    limit: number;
+  };
 }> {
   const startTime = Date.now();
 
@@ -143,6 +158,11 @@ export async function processNaturalQuery(
         "Question too long (max 10,000 characters)"
       );
     }
+
+    // Validate and apply pagination if provided
+    const validatedPagination = pagination
+      ? validatePagination(pagination)
+      : undefined;
 
     // Step 1: Resolve context and enrich the question
     const { enrichedQuestion, resolvedCollection, updatedContext } =
@@ -174,10 +194,10 @@ export async function processNaturalQuery(
     const finalCollection =
       resolvedCollection || intent.extractedCollection || null;
 
-    // Step 4: Execute the appropriate operation
+    // Step 4: Execute the appropriate operation with pagination support
     let result;
     try {
-      result = await executeQuery(finalCollection, intent);
+      result = await executeQuery(finalCollection, intent, validatedPagination);
     } catch (error) {
       // Handle database operation errors
       if (
@@ -222,12 +242,33 @@ export async function processNaturalQuery(
 
     const execution_time_ms = Date.now() - startTime;
 
+    // Prepare pagination info if applicable
+    const paginationInfo =
+      result?.hasMore !== undefined
+        ? {
+            hasMore: result.hasMore,
+            nextOffset: result.nextOffset,
+            totalCount: result.totalCount,
+            limit: validatedPagination?.limit || 20,
+          }
+        : undefined;
+
+    // Log overall query performance
+    logQueryPerformance({
+      queryType: intent.type,
+      collection: finalCollection || undefined,
+      duration: execution_time_ms,
+      recordsProcessed: result?.count || 0,
+      memoryEfficient: true,
+    });
+
     return {
       answer,
       query_type: intent.type,
       data: result,
       execution_time_ms,
       context: finalContext,
+      ...(paginationInfo && { pagination: paginationInfo }),
     };
   } catch (error) {
     const execution_time_ms = Date.now() - startTime;
@@ -1198,10 +1239,11 @@ function extractCollectionFromQuestion(
 
 async function executeQuery(
   collection: string | null,
-  intent: QueryIntent
+  intent: QueryIntent,
+  pagination?: PaginationOptions
 ): Promise<any> {
   if (intent.scope === "database") {
-    return await executeDatabaseQuery(intent);
+    return await executeDatabaseQuery(intent, pagination);
   } else {
     // Collection-level query - require collection name
     if (!collection) {
@@ -1209,11 +1251,14 @@ async function executeQuery(
         "Collection name is required for collection-level queries"
       );
     }
-    return await executeCollectionQuery(collection, intent);
+    return await executeCollectionQuery(collection, intent, pagination);
   }
 }
 
-async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
+async function executeDatabaseQuery(
+  intent: QueryIntent,
+  pagination?: PaginationOptions
+): Promise<any> {
   const config = DEFAULT_CONFIG;
   switch (intent.type) {
     case "count":
@@ -1404,7 +1449,8 @@ async function executeDatabaseQuery(intent: QueryIntent): Promise<any> {
 
 async function executeCollectionQuery(
   collection: string,
-  intent: QueryIntent
+  intent: QueryIntent,
+  pagination?: PaginationOptions
 ): Promise<any> {
   const config = DEFAULT_CONFIG;
   switch (intent.type) {
@@ -1430,18 +1476,24 @@ async function executeCollectionQuery(
       ) {
         // This is likely "find all images" - user wants to see the collection contents
         const totalCount = await countTotal(collection);
+        const limit = pagination?.limit || intent.limit || 20;
+        const offset = pagination?.offset;
+
         const sampleItems = await searchItems(
           collection,
           intent.filter,
-          Math.min(intent.limit || 20, 50), // Show more items but cap at 50
-          config
+          limit,
+          config,
+          offset
         );
         return {
           total_count: totalCount.count,
           displayed_count: sampleItems.count,
           items: sampleItems.items,
+          hasMore: sampleItems.hasMore,
+          nextOffset: sampleItems.nextOffset,
           message:
-            totalCount.count > (intent.limit || 20)
+            totalCount.count > limit
               ? `Showing first ${sampleItems.count} of ${totalCount.count} total ${config.itemType}`
               : undefined,
         };
@@ -1747,96 +1799,155 @@ async function countUniqueEntities(
   collection: string,
   config: DatabaseConfig = DEFAULT_CONFIG
 ): Promise<{ count: number; entities: string[] }> {
-  // Get ALL points from the collection, not just 1000
-  let allPoints: any[] = [];
+  const startTime = Date.now();
+  const uniqueEntities = new Set<string>();
   let offset: string | number | undefined = undefined;
+  let hasMore = true;
+  let totalProcessed = 0;
+  const CHUNK_SIZE = 100; // Process in small chunks
+  const MAX_ENTITIES_TO_COLLECT = 1000; // Reasonable limit to prevent memory issues
 
-  // Scroll through all points in the collection
-  do {
-    const response = await client.scroll(collection, {
-      limit: 1000, // Process in batches of 1000
-      ...(offset !== undefined && { offset }),
-      with_payload: true,
-      with_vector: false,
+  try {
+    while (hasMore && uniqueEntities.size < MAX_ENTITIES_TO_COLLECT) {
+      const response = await client.scroll(collection, {
+        limit: CHUNK_SIZE,
+        ...(offset !== undefined && { offset }),
+        with_payload: true,
+        with_vector: false,
+      });
+
+      response.points.forEach((point: any) => {
+        const entity = getEntityValue(point, config);
+        if (entity) {
+          uniqueEntities.add(entity);
+        }
+      });
+
+      totalProcessed += response.points.length;
+      hasMore = response.next_page_offset !== null;
+
+      // Safely handle the offset type
+      const nextOffset = response.next_page_offset;
+      if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+        offset = nextOffset;
+      } else {
+        offset = undefined;
+      }
+
+      // Safety check to prevent infinite loops
+      if (totalProcessed > 10000) {
+        console.warn(
+          `Stopping entity count after processing ${totalProcessed} records to prevent memory issues`
+        );
+        break;
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "count_unique_entities",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true, // Now using chunked processing
     });
 
-    allPoints.push(...response.points);
-    // Safely handle the offset type
-    const nextOffset = response.next_page_offset;
-    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
-      offset = nextOffset;
-    } else {
-      offset = undefined;
-    }
-  } while (offset !== null && offset !== undefined);
-
-  const entities = new Set(
-    allPoints
-      .map((point: any) => getEntityValue(point, config))
-      .filter((value): value is string => Boolean(value))
-  );
-
-  return {
-    count: entities.size,
-    entities: Array.from(entities).slice(0, 20), // Still limit the returned list for display
-  };
+    return {
+      count: uniqueEntities.size,
+      entities: Array.from(uniqueEntities).slice(0, 50), // Return reasonable sample size
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "count_unique_entities_failed",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true,
+    });
+    throw error;
+  }
 }
 
 async function searchItems(
   collection: string,
   filter: any,
   limit: number,
-  config: DatabaseConfig = DEFAULT_CONFIG
+  config: DatabaseConfig = DEFAULT_CONFIG,
+  offset?: string
 ): Promise<any> {
-  const response = await client.scroll(collection, {
-    limit: 1000,
-    with_payload: true,
-    with_vector: false,
-  });
+  const startTime = Date.now();
 
-  let filteredPoints = response.points;
+  // Validate and cap the limit to prevent memory issues
+  const safeLimit = Math.min(limit, 100);
 
-  if (filter) {
-    filteredPoints = response.points.filter((point: any) => {
-      return Object.entries(filter).every(([key, value]) => {
-        return point.payload?.[key] === value;
-      });
+  // Convert filter to Qdrant-compatible format
+  const qdrantFilter = convertIntentFilterToQdrant(filter, config);
+
+  try {
+    const response = await client.scroll(collection, {
+      limit: safeLimit,
+      ...(offset && { offset }),
+      with_payload: true,
+      with_vector: false,
+      filter: qdrantFilter, // Use database-level filtering instead of in-memory
     });
-  }
 
-  const limitedPoints = filteredPoints.slice(0, limit);
+    const items = response.points.map((point: any) => {
+      const item: any = {
+        id: point.id,
+        [config.entityField]: point.payload?.[config.entityField],
+      };
 
-  const items = limitedPoints.map((point: any) => {
-    const item: any = {
-      id: point.id,
-      [config.entityField]: point.payload?.[config.entityField],
+      // Safely access additionalFields
+      const filenameField = config.additionalFields?.filename;
+      const urlField = config.additionalFields?.url;
+      const descriptionField = config.additionalFields?.description;
+
+      if (filenameField && point.payload?.[filenameField]) {
+        item[filenameField] = point.payload[filenameField];
+      }
+      if (urlField && point.payload?.[urlField]) {
+        item[urlField] = point.payload[urlField];
+      }
+      if (descriptionField && point.payload?.[descriptionField]) {
+        item[descriptionField] = point.payload[descriptionField];
+      }
+
+      // Include the full payload for flexibility
+      item.payload = point.payload;
+
+      return item;
+    });
+
+    const duration = Date.now() - startTime;
+
+    // Log performance metrics
+    logQueryPerformance({
+      queryType: "search_items",
+      collection,
+      duration,
+      recordsProcessed: response.points.length,
+      memoryEfficient: true, // Now using database filtering
+    });
+
+    return {
+      count: response.points.length,
+      items,
+      hasMore: response.next_page_offset !== null,
+      nextOffset: response.next_page_offset,
     };
-
-    // Safely access additionalFields
-    const filenameField = config.additionalFields?.filename;
-    const urlField = config.additionalFields?.url;
-    const descriptionField = config.additionalFields?.description;
-
-    if (filenameField && point.payload?.[filenameField]) {
-      item[filenameField] = point.payload[filenameField];
-    }
-    if (urlField && point.payload?.[urlField]) {
-      item[urlField] = point.payload[urlField];
-    }
-    if (descriptionField && point.payload?.[descriptionField]) {
-      item[descriptionField] = point.payload[descriptionField];
-    }
-
-    // Include the full payload for flexibility
-    item.payload = point.payload;
-
-    return item;
-  });
-
-  return {
-    count: limitedPoints.length,
-    items,
-  };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "search_items_failed",
+      collection,
+      duration,
+      recordsProcessed: 0,
+      memoryEfficient: true,
+    });
+    throw error;
+  }
 }
 
 async function listUniqueEntities(
@@ -1844,37 +1955,72 @@ async function listUniqueEntities(
   limit: number,
   config: DatabaseConfig = DEFAULT_CONFIG
 ): Promise<{ entities: string[] }> {
-  // Get ALL points from the collection to ensure accurate entity listing
-  let allPoints: any[] = [];
+  const startTime = Date.now();
+  const uniqueEntities = new Set<string>();
   let offset: string | number | undefined = undefined;
+  let hasMore = true;
+  let totalProcessed = 0;
+  const CHUNK_SIZE = 100; // Process in small chunks
+  const maxEntities = Math.min(limit, 200); // Cap at reasonable limit
 
-  // Scroll through all points in the collection
-  do {
-    const response = await client.scroll(collection, {
-      limit: 1000, // Process in batches of 1000
-      ...(offset !== undefined && { offset }),
-      with_payload: true,
-      with_vector: false,
+  try {
+    while (hasMore && uniqueEntities.size < maxEntities) {
+      const response = await client.scroll(collection, {
+        limit: CHUNK_SIZE,
+        ...(offset !== undefined && { offset }),
+        with_payload: true,
+        with_vector: false,
+      });
+
+      response.points.forEach((point: any) => {
+        const entity = point.payload?.[config.entityField];
+        if (entity) {
+          uniqueEntities.add(entity);
+        }
+      });
+
+      totalProcessed += response.points.length;
+      hasMore = response.next_page_offset !== null;
+
+      // Safely handle the offset type
+      const nextOffset = response.next_page_offset;
+      if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+        offset = nextOffset;
+      } else {
+        offset = undefined;
+      }
+
+      // Safety check to prevent processing too many records
+      if (totalProcessed > 5000) {
+        console.warn(
+          `Stopping entity listing after processing ${totalProcessed} records to prevent memory issues`
+        );
+        break;
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "list_unique_entities",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true,
     });
 
-    allPoints.push(...response.points);
-    // Safely handle the offset type
-    const nextOffset = response.next_page_offset;
-    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
-      offset = nextOffset;
-    } else {
-      offset = undefined;
-    }
-  } while (offset !== null && offset !== undefined);
-
-  const entities = new Set(
-    allPoints
-      .map((point: any) => point.payload?.[config.entityField])
-      .filter(Boolean)
-  );
-
-  // Return the requested number of entities
-  return { entities: Array.from(entities).slice(0, limit) };
+    // Return the requested number of entities
+    return { entities: Array.from(uniqueEntities).slice(0, limit) };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "list_unique_entities_failed",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true,
+    });
+    throw error;
+  }
 }
 
 async function listItems(
@@ -2500,18 +2646,21 @@ async function countEntitiesAcrossDatabase(
   count: number;
   entities: string[]; // Renamed from artists to entities for consistency
 }> {
+  const startTime = Date.now();
   const collectionsData = await listCollections();
   const allEntities = new Set<string>(); // Renamed from allArtists to allEntities
+  let totalProcessed = 0;
 
-  // Collect entities from each collection
+  // Collect entities from each collection using memory-efficient approach
   for (const collection of collectionsData.collections) {
     try {
       if (collection.vectors_count && collection.vectors_count > 0) {
-        // Call the generic countUniqueEntities function and pass the config
+        // Use the improved countUniqueEntities function
         const entitiesData = await countUniqueEntities(collection.name, config);
         entitiesData.entities.forEach((entity: string) =>
           allEntities.add(entity)
-        ); // Use entitiesData.entities and add type to entity
+        );
+        totalProcessed += entitiesData.entities.length;
       }
     } catch (error) {
       console.warn(
@@ -2521,9 +2670,17 @@ async function countEntitiesAcrossDatabase(
     }
   }
 
+  const duration = Date.now() - startTime;
+  logQueryPerformance({
+    queryType: "count_entities_across_database",
+    duration,
+    recordsProcessed: totalProcessed,
+    memoryEfficient: true,
+  });
+
   return {
     count: allEntities.size,
-    entities: Array.from(allEntities).slice(0, 20), // Show first 20
+    entities: Array.from(allEntities).slice(0, 50), // Show first 50
   };
 }
 
@@ -2841,28 +2998,50 @@ async function summarizeArtistAcrossDatabase(
 async function getTopArtistsByImageCountAcrossDatabase(
   limit: number
 ): Promise<any> {
+  const startTime = Date.now();
   const collectionsData = await listCollections();
   const artistCounts: {
     [artistName: string]: { count: number; collections: string[] };
   } = {};
+  let totalProcessed = 0;
 
-  // Collect artist counts from all collections
+  // Collect artist counts from all collections using chunked processing
   for (const collection of collectionsData.collections) {
     try {
       if (collection.vectors_count && collection.vectors_count > 0) {
-        // Get ALL points from the collection to count by artist
-        let allPoints: any[] = [];
+        // Use chunked processing instead of loading all points
         let offset: string | number | undefined = undefined;
+        let hasMore = true;
+        const CHUNK_SIZE = 100;
+        let collectionProcessed = 0;
 
-        // Scroll through all points in the collection
-        do {
+        while (hasMore && collectionProcessed < 5000) {
+          // Limit per collection
           const scrollResult = await client.scroll(collection.name, {
-            limit: 1000, // Process in batches of 1000
+            limit: CHUNK_SIZE,
             ...(offset !== undefined && { offset }),
             with_payload: true,
           });
 
-          allPoints.push(...scrollResult.points);
+          for (const point of scrollResult.points) {
+            const artistName = point.payload?.name;
+            if (artistName && typeof artistName === "string") {
+              if (!artistCounts[artistName]) {
+                artistCounts[artistName] = { count: 0, collections: [] };
+              }
+              artistCounts[artistName].count++;
+              if (
+                !artistCounts[artistName].collections.includes(collection.name)
+              ) {
+                artistCounts[artistName].collections.push(collection.name);
+              }
+            }
+          }
+
+          totalProcessed += scrollResult.points.length;
+          collectionProcessed += scrollResult.points.length;
+          hasMore = scrollResult.next_page_offset !== null;
+
           // Safely handle the offset type
           const nextOffset = scrollResult.next_page_offset;
           if (
@@ -2873,21 +3052,12 @@ async function getTopArtistsByImageCountAcrossDatabase(
           } else {
             offset = undefined;
           }
-        } while (offset !== null && offset !== undefined);
+        }
 
-        for (const point of allPoints) {
-          const artistName = point.payload?.name;
-          if (artistName && typeof artistName === "string") {
-            if (!artistCounts[artistName]) {
-              artistCounts[artistName] = { count: 0, collections: [] };
-            }
-            artistCounts[artistName].count++;
-            if (
-              !artistCounts[artistName].collections.includes(collection.name)
-            ) {
-              artistCounts[artistName].collections.push(collection.name);
-            }
-          }
+        if (collectionProcessed >= 5000) {
+          console.warn(
+            `Limited processing for collection ${collection.name} to prevent memory issues (processed ${collectionProcessed} records)`
+          );
         }
       }
     } catch (error) {
@@ -2933,6 +3103,14 @@ async function getTopArtistsByImageCountAcrossDatabase(
     countGroups[artist.image_count].push(artist.name);
   });
 
+  const duration = Date.now() - startTime;
+  logQueryPerformance({
+    queryType: "get_top_artists_across_database",
+    duration,
+    recordsProcessed: totalProcessed,
+    memoryEfficient: true,
+  });
+
   return {
     top_artists: topArtists,
     total_artists_found: Object.keys(artistCounts).length,
@@ -2959,94 +3137,128 @@ async function getTopArtistsByImageCountInCollection(
   collection: string,
   limit: number
 ): Promise<any> {
-  // Get ALL points from the collection, not just 1000
-  let allPoints: any[] = [];
+  const startTime = Date.now();
+
+  // Use chunked processing instead of loading all points into memory
   let offset: string | number | undefined = undefined;
-
-  // Scroll through all points in the collection
-  do {
-    const response = await client.scroll(collection, {
-      limit: 1000, // Process in batches of 1000
-      ...(offset !== undefined && { offset }),
-      with_payload: true,
-      with_vector: false,
-    });
-
-    allPoints.push(...response.points);
-    // Safely handle the offset type
-    const nextOffset = response.next_page_offset;
-    if (typeof nextOffset === "string" || typeof nextOffset === "number") {
-      offset = nextOffset;
-    } else {
-      offset = undefined;
-    }
-  } while (offset !== null && offset !== undefined);
-
+  let hasMore = true;
+  const CHUNK_SIZE = 100;
+  let totalProcessed = 0;
   const artistCounts: { [artistName: string]: number } = {};
 
-  for (const point of allPoints) {
-    const artistName = point.payload?.name;
-    if (artistName && typeof artistName === "string") {
-      if (!artistCounts[artistName]) {
-        artistCounts[artistName] = 0;
+  try {
+    while (hasMore && totalProcessed < 10000) {
+      // Safety limit
+      const response = await client.scroll(collection, {
+        limit: CHUNK_SIZE,
+        ...(offset !== undefined && { offset }),
+        with_payload: true,
+        with_vector: false,
+      });
+
+      for (const point of response.points) {
+        const artistName = point.payload?.name;
+        if (artistName && typeof artistName === "string") {
+          if (!artistCounts[artistName]) {
+            artistCounts[artistName] = 0;
+          }
+          artistCounts[artistName]++;
+        }
       }
-      artistCounts[artistName]++;
+
+      totalProcessed += response.points.length;
+      hasMore = response.next_page_offset !== null;
+
+      // Safely handle the offset type
+      const nextOffset = response.next_page_offset;
+      if (typeof nextOffset === "string" || typeof nextOffset === "number") {
+        offset = nextOffset;
+      } else {
+        offset = undefined;
+      }
     }
+
+    if (totalProcessed >= 10000) {
+      console.warn(
+        `Limited processing for collection ${collection} to prevent memory issues (processed ${totalProcessed} records)`
+      );
+    }
+
+    const sortedArtists = Object.entries(artistCounts)
+      .map(([name, count]) => ({
+        name,
+        image_count: count,
+      }))
+      .sort((a, b) => b.image_count - a.image_count);
+
+    // Analyze the distribution to detect ties
+    const maxCount =
+      sortedArtists.length > 0 ? sortedArtists[0].image_count : 0;
+    const artistsWithMaxCount = sortedArtists.filter(
+      (artist) => artist.image_count === maxCount
+    );
+    const hasTie = artistsWithMaxCount.length > 1;
+
+    // Get the requested number of top artists
+    const topArtists = sortedArtists.slice(0, limit);
+
+    // Calculate some statistics
+    const totalImages = Object.values(artistCounts).reduce(
+      (sum, count) => sum + count,
+      0
+    );
+    const averageImagesPerArtist =
+      totalImages / Object.keys(artistCounts).length;
+
+    // Group artists by image count for better analysis
+    const countGroups: { [count: number]: string[] } = {};
+    sortedArtists.forEach((artist) => {
+      if (!countGroups[artist.image_count]) {
+        countGroups[artist.image_count] = [];
+      }
+      countGroups[artist.image_count].push(artist.name);
+    });
+
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "get_top_artists_in_collection",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true,
+    });
+
+    return {
+      top_artists: topArtists,
+      total_artists_found: Object.keys(artistCounts).length,
+      collections_searched: 1,
+      max_image_count: maxCount,
+      artists_with_max_count: artistsWithMaxCount,
+      has_tie: hasTie,
+      tie_count: artistsWithMaxCount.length,
+      total_images: totalImages,
+      average_images_per_artist: Math.round(averageImagesPerArtist * 100) / 100,
+      distribution: countGroups,
+      analysis: {
+        is_evenly_distributed:
+          Object.keys(countGroups).length === Object.keys(artistCounts).length,
+        most_common_count:
+          Object.entries(countGroups).sort(
+            (a, b) => b[1].length - a[1].length
+          )[0]?.[0] || "0",
+      },
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logQueryPerformance({
+      queryType: "get_top_artists_in_collection_failed",
+      collection,
+      duration,
+      recordsProcessed: totalProcessed,
+      memoryEfficient: true,
+    });
+    throw error;
   }
-
-  const sortedArtists = Object.entries(artistCounts)
-    .map(([name, count]) => ({
-      name,
-      image_count: count,
-    }))
-    .sort((a, b) => b.image_count - a.image_count);
-
-  // Analyze the distribution to detect ties
-  const maxCount = sortedArtists.length > 0 ? sortedArtists[0].image_count : 0;
-  const artistsWithMaxCount = sortedArtists.filter(
-    (artist) => artist.image_count === maxCount
-  );
-  const hasTie = artistsWithMaxCount.length > 1;
-
-  // Get the requested number of top artists
-  const topArtists = sortedArtists.slice(0, limit);
-
-  // Calculate some statistics
-  const totalImages = Object.values(artistCounts).reduce(
-    (sum, count) => sum + count,
-    0
-  );
-  const averageImagesPerArtist = totalImages / Object.keys(artistCounts).length;
-
-  // Group artists by image count for better analysis
-  const countGroups: { [count: number]: string[] } = {};
-  sortedArtists.forEach((artist) => {
-    if (!countGroups[artist.image_count]) {
-      countGroups[artist.image_count] = [];
-    }
-    countGroups[artist.image_count].push(artist.name);
-  });
-
-  return {
-    top_artists: topArtists,
-    total_artists_found: Object.keys(artistCounts).length,
-    collections_searched: 1,
-    max_image_count: maxCount,
-    artists_with_max_count: artistsWithMaxCount,
-    has_tie: hasTie,
-    tie_count: artistsWithMaxCount.length,
-    total_images: totalImages,
-    average_images_per_artist: Math.round(averageImagesPerArtist * 100) / 100,
-    distribution: countGroups,
-    analysis: {
-      is_evenly_distributed:
-        Object.keys(countGroups).length === Object.keys(artistCounts).length,
-      most_common_count:
-        Object.entries(countGroups).sort(
-          (a, b) => b[1].length - a[1].length
-        )[0]?.[0] || "0",
-    },
-  };
 }
 
 async function getCollectionWithMostItems(): Promise<string | null> {
@@ -3070,48 +3282,111 @@ async function getCollectionWithMostItems(): Promise<string | null> {
   return collectionWithMostItems;
 }
 
-// Helper function to convert intent filter to Qdrant filter (basic implementation)
-// This will need to be expanded significantly to support complex filters from the updated prompt
+// Enhanced helper function to convert intent filter to Qdrant filter
 function convertIntentFilterToQdrant(filter: any, config: DatabaseConfig): any {
   if (!filter) return undefined;
 
-  const qdrantFilter: { must?: any[]; should?: any[]; must_not?: any[] } = {
-    must: [],
-  };
-
-  const processSingleFilter = (singleFilter: any) => {
-    const conditions: any[] = [];
-    for (const key in singleFilter) {
-      const value = singleFilter[key];
-      if (key === config.entityField) {
-        conditions.push({ key: config.entityField, match: { value: value } });
-      } else if (typeof value === "object" && value !== null) {
-        if (value.contains) {
-          conditions.push({ key: key, match: { text: value.contains } }); // Basic text containment
-        } else if (value.gt) {
-          conditions.push({ key: key, range: { gt: value.gt } });
-        } else if (value.lt) {
-          conditions.push({ key: key, range: { lt: value.lt } });
-        }
-        // Add more operators here (gte, lte, etc.)
-      } else {
-        conditions.push({ key: key, match: { value: value } });
+  const buildCondition = (key: string, value: any): any => {
+    // Handle complex value objects with operators
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      if (value.contains) {
+        // Text search - use match with text operator
+        return {
+          key: key,
+          match: {
+            text: value.contains,
+          },
+        };
+      } else if (value.gt !== undefined) {
+        return {
+          key: key,
+          range: {
+            gt: value.gt,
+          },
+        };
+      } else if (value.gte !== undefined) {
+        return {
+          key: key,
+          range: {
+            gte: value.gte,
+          },
+        };
+      } else if (value.lt !== undefined) {
+        return {
+          key: key,
+          range: {
+            lt: value.lt,
+          },
+        };
+      } else if (value.lte !== undefined) {
+        return {
+          key: key,
+          range: {
+            lte: value.lte,
+          },
+        };
+      } else if (value.in && Array.isArray(value.in)) {
+        // Handle "in" operator for multiple values
+        return {
+          key: key,
+          match: {
+            any: value.in,
+          },
+        };
+      } else if (value.not !== undefined) {
+        // Handle "not" operator
+        return {
+          key: key,
+          match: {
+            except: [value.not],
+          },
+        };
       }
     }
+
+    // Simple exact match
+    return {
+      key: key,
+      match: {
+        value: value,
+      },
+    };
+  };
+
+  const processSingleFilter = (singleFilter: any): any[] => {
+    const conditions: any[] = [];
+
+    for (const key in singleFilter) {
+      const value = singleFilter[key];
+      conditions.push(buildCondition(key, value));
+    }
+
     return conditions;
   };
 
+  // Handle different filter structures
   if (Array.isArray(filter)) {
-    // Multiple AND conditions
+    // Multiple filters - all must match (AND condition)
+    const allConditions: any[] = [];
     filter.forEach((subFilter) => {
-      qdrantFilter.must!.push(...processSingleFilter(subFilter));
+      allConditions.push(...processSingleFilter(subFilter));
     });
+
+    return allConditions.length > 0
+      ? {
+          must: allConditions,
+        }
+      : undefined;
   } else {
     // Single filter object
-    qdrantFilter.must!.push(...processSingleFilter(filter));
-  }
+    const conditions = processSingleFilter(filter);
 
-  return qdrantFilter.must!.length > 0 ? qdrantFilter : undefined;
+    return conditions.length > 0
+      ? {
+          must: conditions,
+        }
+      : undefined;
+  }
 }
 
 // Renamed function
