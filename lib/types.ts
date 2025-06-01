@@ -59,8 +59,6 @@ export const AVAILABLE_MODELS = {
   "o1-2024-12-17": { provider: "openai", name: "O1 2024-12-17" },
 
   // Gemini models (using correct model names)
-  "gemini-2.5-pro": { provider: "gemini", name: "Gemini 2.5 Pro" },
-  "gemini-2.5-flash": { provider: "gemini", name: "Gemini 2.5 Flash" },
   "gemini-2.0-flash": { provider: "gemini", name: "Gemini 2.0 Flash" },
   "gemini-1.5-pro": { provider: "gemini", name: "Gemini 1.5 Pro" },
   "gemini-1.5-flash": { provider: "gemini", name: "Gemini 1.5 Flash" },

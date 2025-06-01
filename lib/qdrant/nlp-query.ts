@@ -746,7 +746,35 @@ function inferIntentFromQuestion(
     }
   }
 
-  // Handle ranking and "most" queries
+  // PRIORITY 1: Database-level queries (must come first before entity matching)
+  if (q.includes("collections") || q.includes("database")) {
+    if (q.includes("how many") || q.includes("count")) {
+      // Check if they're asking about vectors/items ACROSS collections, not collections themselves
+      if (
+        q.includes("vector") ||
+        q.includes("item") ||
+        q.includes("record") ||
+        q.includes("total")
+      ) {
+        return { type: "count", target: "total", scope: "database" };
+      }
+      // Otherwise they're asking about collections count
+      return { type: "count", target: "collections", scope: "database" };
+    }
+    if (
+      q.includes("list") ||
+      q.includes("what") ||
+      q.includes("show") ||
+      q.includes("exist")
+    ) {
+      return { type: "collections", target: "list", scope: "database" };
+    }
+    if (q.includes("describe")) {
+      return { type: "database", target: "overview", scope: "database" };
+    }
+  }
+
+  // PRIORITY 2: Handle ranking and "most" queries
   if (
     q.includes("which") &&
     (q.includes("most") ||
@@ -783,7 +811,7 @@ function inferIntentFromQuestion(
     }
   }
 
-  // Handle "top N" queries
+  // PRIORITY 3: Handle "top N" queries
   if (q.includes("top") && /top\s+(\d+)/.test(q)) {
     const limitMatch = q.match(/top\s+(\d+)/);
     const limit = limitMatch ? parseInt(limitMatch[1]) : 5;
@@ -803,7 +831,7 @@ function inferIntentFromQuestion(
     }
   }
 
-  // Check for entity-specific queries with generic patterns (use processed question)
+  // PRIORITY 4: Check for entity-specific queries (improved patterns to be less greedy)
   // But first check if the mentioned name is actually a collection name
   const entityMatch =
     processedQuestion.match(
@@ -812,6 +840,7 @@ function inferIntentFromQuestion(
     processedQuestion.match(
       /(?:done\s+by|created\s+by|made\s+by|work\s+by|items\s+by|pieces\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+(?:in|from|of|at|with|for)\b|$)/i
     ) ||
+    // More restrictive pattern - only match if it looks like a proper name (Title Case)
     processedQuestion.match(
       /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s+(?:work|items|pieces|data|content))/i
     );
@@ -819,26 +848,43 @@ function inferIntentFromQuestion(
   let entityName: string | null = null;
   if (entityMatch) {
     const candidateName = entityMatch[1].trim();
-    // Check if this is actually a collection name
-    if (
-      availableCollections &&
-      availableCollections.some(
-        (col) => col.toLowerCase() === candidateName.toLowerCase()
-      )
-    ) {
-      // This is a collection name, not an entity name
-      isCollectionQuery = true;
-      targetCollection = candidateName;
-      console.log(
-        `🎯 Detected collection name in entity pattern: ${candidateName}`
-      );
-    } else {
-      // This is an entity name
-      entityName = candidateName;
+    // Additional validation: don't match if it contains common non-name words
+    const nonNameWords = [
+      "collections",
+      "database",
+      "many",
+      "total",
+      "how",
+      "what",
+      "where",
+      "when",
+    ];
+    const containsNonNameWord = nonNameWords.some((word) =>
+      candidateName.toLowerCase().includes(word)
+    );
+
+    if (!containsNonNameWord) {
+      // Check if this is actually a collection name
+      if (
+        availableCollections &&
+        availableCollections.some(
+          (col) => col.toLowerCase() === candidateName.toLowerCase()
+        )
+      ) {
+        // This is a collection name, not an entity name
+        isCollectionQuery = true;
+        targetCollection = candidateName;
+        console.log(
+          `🎯 Detected collection name in entity pattern: ${candidateName}`
+        );
+      } else {
+        // This is an entity name
+        entityName = candidateName;
+      }
     }
   }
 
-  // Entity-specific queries (high priority)
+  // PRIORITY 5: Entity-specific queries (high priority after database queries)
   if (entityName) {
     const filter = { name: entityName };
     const scope = targetCollection ? "collection" : "database";
@@ -892,7 +938,7 @@ function inferIntentFromQuestion(
     }
   }
 
-  // Handle collection-specific queries (when no entity is specified)
+  // PRIORITY 6: Handle collection-specific queries (when no entity is specified)
   if (isCollectionQuery && targetCollection && !entityName) {
     const scope = "collection";
 
@@ -919,35 +965,7 @@ function inferIntentFromQuestion(
     }
   }
 
-  // Database-level queries
-  if (q.includes("collections") || q.includes("database")) {
-    if (q.includes("how many") || q.includes("count")) {
-      // Check if they're asking about vectors/items ACROSS collections, not collections themselves
-      if (
-        q.includes("vector") ||
-        q.includes("item") ||
-        q.includes("record") ||
-        q.includes("total")
-      ) {
-        return { type: "count", target: "total", scope: "database" };
-      }
-      // Otherwise they're asking about collections count
-      return { type: "count", target: "collections", scope: "database" };
-    }
-    if (
-      q.includes("list") ||
-      q.includes("what") ||
-      q.includes("show") ||
-      q.includes("exist")
-    ) {
-      return { type: "collections", target: "list", scope: "database" };
-    }
-    if (q.includes("describe")) {
-      return { type: "database", target: "overview", scope: "database" };
-    }
-  }
-
-  // Collection-level queries (existing logic)
+  // PRIORITY 7: Collection-level queries (existing logic)
   if (q.includes("how many") || q.includes("count")) {
     if (
       q.includes("entities") ||

@@ -10,12 +10,26 @@ interface ChatHeaderProps {
 }
 
 export function ChatHeader({ selectedModel }: ChatHeaderProps) {
+  // Debug logging to see what's being passed
+  console.log("ChatHeader selectedModel:", selectedModel);
+  console.log("Available model keys:", Object.keys(AVAILABLE_MODELS));
+  console.log(
+    "selectedModel exists in AVAILABLE_MODELS:",
+    selectedModel in AVAILABLE_MODELS
+  );
+
+  // Safe access to model info with fallback
+  const modelInfo =
+    selectedModel && AVAILABLE_MODELS[selectedModel]
+      ? AVAILABLE_MODELS[selectedModel]
+      : { name: "Unknown Model" };
+
   return (
     <div className="border-b bg-background p-2">
       <div className="flex items-center gap-2">
         <div className="ml-auto flex items-center gap-2">
           <Badge variant="outline" className="text-xs h-9 font-normal">
-            {AVAILABLE_MODELS[selectedModel].name}
+            {modelInfo.name}
           </Badge>
           <ModeToggle />
         </div>
