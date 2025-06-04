@@ -1,7 +1,7 @@
 "use client";
 
 import { MessageCircle, Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/lib/frontend/components/ui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 

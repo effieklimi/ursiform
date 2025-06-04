@@ -1,8 +1,8 @@
 "use client";
 
 import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/lib/frontend/components/ui/button";
+import { Input } from "@/lib/frontend/components/ui/input";
 
 interface ChatInputProps {
   inputValue: string;

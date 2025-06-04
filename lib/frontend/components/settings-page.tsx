@@ -11,7 +11,12 @@ import {
   Loader2,
   Circle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/lib/frontend/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -20,11 +25,11 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from "@/lib/frontend/components/ui/select";
+import { Badge } from "@/lib/frontend/components/ui/badge";
+import { Button } from "@/lib/frontend/components/ui/button";
 import Link from "next/link";
-import { ModeToggle } from "@/components/mode-toggle";
+import { ModeToggle } from "@/lib/frontend/components/mode-toggle";
 import { AVAILABLE_MODELS } from "@/lib/types";
 import { useAtom } from "jotai";
 import { selectedModelAtom } from "@/lib/atoms";

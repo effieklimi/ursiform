@@ -1,4 +1,4 @@
-import ChatPage from "@/components/chat-page";
+import ChatPage from "@/lib/frontend/components/chat-page";
 
 export const metadata = {
   title: "Chat - Ursiform",

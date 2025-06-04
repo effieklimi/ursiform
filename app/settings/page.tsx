@@ -1,5 +1,5 @@
-import { SettingsPage } from "@/components/settings-page";
-import { SideNavigation } from "@/components/side-navigation";
+import { SettingsPage } from "@/lib/frontend/components/settings-page";
+import { SideNavigation } from "@/lib/frontend/components/side-navigation";
 
 export const metadata = {
   title: "Settings - Ursiform",

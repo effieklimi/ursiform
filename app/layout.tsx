@@ -1,8 +1,8 @@
-import "../frontend/styles/globals.css";
+import "../lib/frontend/styles/globals.css";
 import type { ReactNode } from "react";
-import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeProvider } from "@/lib/frontend/components/theme-provider";
 import { Provider } from "jotai";
-import { TRPCProvider } from "@/components/providers/trpc-provider";
+import { TRPCProvider } from "@/lib/frontend/components/providers/trpc-provider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

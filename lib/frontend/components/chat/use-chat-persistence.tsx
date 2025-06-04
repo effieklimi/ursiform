@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { trpc } from "@/components/providers/trpc-provider";
+import { trpc } from "@/lib/frontend/components/providers/trpc-provider";
 import { ChatMessage } from "@/lib/types";
 import { Chat, Message } from "@prisma/client";
 

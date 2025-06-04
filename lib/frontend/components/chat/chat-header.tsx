@@ -1,9 +1,9 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { ModeToggle } from "@/components/mode-toggle";
+import { Badge } from "@/lib/frontend/components/ui/badge";
+import { ModeToggle } from "@/lib/frontend/components/mode-toggle";
 import { AVAILABLE_MODELS, ModelKey } from "@/lib/types";
-import UrsiformLogo from "../icons/UrsiformLogo";
+import { UrsiformLogo } from "@/lib/frontend/components/icons/UrsiformLogo";
 
 interface ChatHeaderProps {
   selectedModel: ModelKey;

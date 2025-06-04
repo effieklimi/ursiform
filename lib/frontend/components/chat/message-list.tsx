@@ -2,10 +2,10 @@
 
 import { useRef, useEffect } from "react";
 import { Bot, User, Clock } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/lib/frontend/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import { ChatMessage } from "@/lib/types";
-import { UrsiformLogo } from "../icons/UrsiformLogo";
+import { UrsiformLogo } from "@/lib/frontend/components/icons/UrsiformLogo";
 
 interface MessageListProps {
   messages: ChatMessage[];

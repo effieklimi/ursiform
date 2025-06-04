@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { SideNavigation } from "@/components/side-navigation";
-import { ChatHeader } from "@/components/chat/chat-header";
-import { ChatInput } from "@/components/chat/chat-input";
-import { MessageList } from "@/components/chat/message-list";
-import { ChatSidebar } from "@/components/chat/chat-sidebar";
-import { useDataFormatting } from "@/components/chat/use-data-formatting";
-import { useChatLogic } from "@/components/chat/use-chat-logic";
-import { useChatPersistence } from "@/components/chat/use-chat-persistence";
+import { SideNavigation } from "@/lib/frontend/components/side-navigation";
+import { ChatHeader } from "@/lib/frontend/components/chat/chat-header";
+import { ChatInput } from "@/lib/frontend/components/chat/chat-input";
+import { MessageList } from "@/lib/frontend/components/chat/message-list";
+import { ChatSidebar } from "@/lib/frontend/components/chat/chat-sidebar";
+import { useDataFormatting } from "@/lib/frontend/components/chat/use-data-formatting";
+import { useChatLogic } from "@/lib/frontend/components/chat/use-chat-logic";
+import { useChatPersistence } from "@/lib/frontend/components/chat/use-chat-persistence";
 import { ChatMessage } from "@/lib/types";
 import { useAtom } from "jotai";
 import {

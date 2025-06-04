@@ -1,15 +1,20 @@
 "use client";
 
 import { Bot, Database, MessageSquare, Plus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/lib/frontend/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/lib/frontend/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/lib/frontend/components/ui/select";
 import { ConversationContext } from "@/lib/types";
 import { Chat } from "@prisma/client";
 

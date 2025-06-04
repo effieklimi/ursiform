@@ -4,8 +4,12 @@ export const metadata = {
   title: "Ursiform",
   description:
     "Open source AI agent for vector database queries and operations",
-  viewport: "width=device-width, initial-scale=1",
   icons: { icon: "/favicon.ico" },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function Home() {

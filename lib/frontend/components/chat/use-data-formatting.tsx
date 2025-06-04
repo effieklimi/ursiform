@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/lib/frontend/components/ui/badge";
 
 export function useDataFormatting() {
   const formatData = (data: any, queryType: string) => {
