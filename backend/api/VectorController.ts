@@ -44,19 +44,31 @@ export class VectorController {
         context
       );
 
+      console.log(
+        `🔍 Intent detected: ${nlpResult.intent.type} (confidence: ${nlpResult.intent.confidence})`
+      );
+      console.log(`🎯 Extracted filters:`, nlpResult.intent.extractedFilters);
+
       // Step 2: Execute search if needed
       let searchResults = null;
       if (
         nlpResult.intent.type === "search" ||
-        nlpResult.intent.type === "filter"
+        nlpResult.intent.type === "filter" ||
+        nlpResult.intent.type === "count"
       ) {
         try {
+          // Use higher limit for count queries to get more accurate totals
+          const searchLimit =
+            nlpResult.intent.type === "count"
+              ? 1000
+              : nlpResult.searchQuery.limit || 10;
+
           searchResults = await this.searchService.semanticSearch(
             collection,
             nlpResult.searchQuery.text || question,
             {
               provider: provider as any,
-              limit: nlpResult.searchQuery.limit || 10,
+              limit: searchLimit,
               filters: nlpResult.searchQuery.filters,
             }
           );
@@ -74,6 +86,8 @@ export class VectorController {
         searchResults,
         question
       );
+
+      console.log(`💬 Generated response: "${answer}"`);
 
       const executionTime = Date.now() - startTime;
 
@@ -108,11 +122,16 @@ export class VectorController {
 
     if (intentType === "count") {
       if (searchResults && searchResults.hits) {
-        return `Found ${searchResults.hits.length} results${
-          entityName ? ` for ${entityName}` : ""
-        }.`;
+        const count = searchResults.hits.length;
+        const entityText = entityName ? ` related to ${entityName}` : "";
+
+        if (count === 1000) {
+          return `Found at least ${count} items${entityText} in the database. This might be a partial count due to search limits.`;
+        } else {
+          return `Found ${count} items${entityText} in the database.`;
+        }
       }
-      return `I can help you count items in the database. However, I need access to the database to provide exact numbers.`;
+      return `I can help you count items in the database, but I'm currently unable to access the database to provide exact numbers. This might be due to rate limiting or connectivity issues.`;
     }
 
     if (intentType === "filter" && entityName) {

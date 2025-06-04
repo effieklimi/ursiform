@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  swcMinify: false,
   // Enable standalone output for Docker
   output: "standalone",
   // Environment variables available to the client
